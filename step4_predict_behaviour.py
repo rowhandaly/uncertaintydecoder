@@ -31,6 +31,8 @@ Comparisons (all on held-out trials):
       uncertainty, it should disappear.
 """
 
+import sys
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_rel
@@ -39,12 +41,17 @@ from sklearn.model_selection import cross_val_predict
 
 rng = np.random.default_rng(seed=1)
 
-data = np.load("data/simulated_session.npz")
+# Which session to analyse: a file made by step 0 (real data) or step 1
+# (the simulation, the default). Run as:  python step4_predict_behaviour.py data/<session>.npz
+session_file = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/simulated_session.npz")
+session_name = session_file.stem
+decoded_file = Path("data") / f"{session_name}_decoded.npz"
+data = np.load(session_file)
 coherence = data["coherence"]
 choice = data["choice"]            # +1 right, -1 left
 wager = data["wager"]              # 1 high, 0 low
 
-decoded = np.load("data/decoded_likelihoods.npz")
+decoded = np.load(decoded_file)
 names = list(decoded["names"])
 coherence_values = decoded["coherence_values"]
 log_likelihoods = dict(zip(names, decoded["log_likelihoods"]))
@@ -156,5 +163,5 @@ axes[0].set_ylabel("held-out log-likelihood per trial\n"
                    "relative to fixed-width model")
 axes[1].legend()
 fig.tight_layout()
-fig.savefig("figures/step4_behaviour.png", dpi=120)
-print("saved figures/step4_behaviour.png")
+fig.savefig(f"figures/{session_name}_step4.png", dpi=120)
+print(f"saved figures/{session_name}_step4.png")

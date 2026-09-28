@@ -1,5 +1,10 @@
 # Uncertainty decoding in LIP
 
+**Current target: MT/MST** (recorded alongside LIP in the same sessions).
+MT is a sensory area, so it is the closest match to Walker et al.'s V1
+setting: the question is whether the trial-by-trial width of MT's
+likelihood over motion coherence predicts the monkey's wager.
+
 This project applies the likelihood-decoding approach of
 **Walker, Cotton, Ma & Tolias (2020)**, *A neural basis of probabilistic
 computation in visual cortex*, to the LIP peri-decision wagering task of
@@ -35,6 +40,7 @@ decoded uncertainty tracks it.
 
 | file | what it does |
 |---|---|
+| `step0_load_session.py` | **Real data.** Runs on Rockfish next to a session folder (Open Ephys binary + Kilosort/Phy). Reads the task's network text messages (coherence, direction, choice, PDW, RT), motion onset/offset from TTL channel 4, and spike times of units labelled MT/MST (not noise). Counts spikes in a fixed window after motion onset and saves `data/<session>.npz` in the same format as step 1. Prints a table to check the choice/wager conventions. |
 | `step1_simulate_task.py` | Simulates one session (real data aren't public yet): a two-accumulator race sets choice, wager and decision time; 40 LIP-like neurons read out the accumulators; Poisson spike counts in the first 400 ms. A trial-to-trial **attention** level scales both the evidence and the firing, which gives trials a real uncertainty signal. `ATTENTION_SD = 0` switches it off (the null case). |
 | `likelihood_decoders.py` | The decoders and their training (Walker et al.'s objective: `log_softmax(log L + log prior)` trained with cross-entropy against the true coherence). **Full**: free weights for every coherence. **Low rank**: every coherence is read out from the same few population axes. **Fixed width**: a bump of fixed width that only moves (Walker's "fixed-uncertainty" decoder). |
 | `step2_decode_likelihoods.py` | Decodes a cross-validated likelihood over the 11 coherences on every trial with each decoder, and compares them on held-out trials. *How many shared axes does decoding need?* |
@@ -63,6 +69,7 @@ behaviour disappears.
 
 ## Running
 
+Simulation (steps 2-4 default to the simulated session):
 ```
 pip install -r requirements.txt
 python step1_simulate_task.py
@@ -70,4 +77,26 @@ python step2_decode_likelihoods.py     # ~45 s
 python step3_shared_axes.py
 python step4_predict_behaviour.py
 ```
-Figures go to `figures/`, intermediate arrays to `data/`.
+
+Real data (on Rockfish), one session:
+```
+python step0_load_session.py "/home/cfetsch1/vast-cfetsch1/data/hanzo_neuro_binary/hanzo_2021-09-14_13-27-18"
+python step2_decode_likelihoods.py data/hanzo_2021-09-14_13-27-18.npz
+python step3_shared_axes.py        data/hanzo_2021-09-14_13-27-18.npz
+python step4_predict_behaviour.py  data/hanzo_2021-09-14_13-27-18.npz
+```
+Figures go to `figures/<session>_stepN.png`, intermediate arrays to `data/`.
+
+## Before trusting real-data results
+
+- [ ] Check the conventions table printed by step 0 (choice coding, which
+      PDW value is the high bet, which Direction is rightward).
+- [ ] Choose the spike window (step 0 settings). MT responds ~50-80 ms
+      after motion onset; longer windows keep fewer short-RT trials.
+- [ ] Loop over sessions and pool the step 4 comparisons.
+- [ ] Check what axis 2 tracks (step 3 prints its correlation with RT and
+      trial number) before calling it uncertainty.
+- [ ] Compare with a decoder trained directly on the wager
+      (Vivar-Lazo & Fetsch's approach).
+- [ ] Optional: Walker's nonlinear decoder; a sensory (MT-like) version of
+      the simulation.

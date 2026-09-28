@@ -17,6 +17,8 @@ really just 2 population axes mixed in different amounts.
 The decoders never see the monkey's choice or wager - only coherence.
 """
 
+import sys
+from pathlib import Path
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -24,7 +26,12 @@ from likelihood_decoders import (FullDecoder, LowRankDecoder,
                                  FixedWidthDecoder,
                                  cross_validated_log_likelihoods)
 
-data = np.load("data/simulated_session.npz")
+# Which session to analyse: a file made by step 0 (real data) or step 1
+# (the simulation, the default). Run as:  python step2_decode_likelihoods.py data/<session>.npz
+session_file = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/simulated_session.npz")
+session_name = session_file.stem
+decoded_file = Path("data") / f"{session_name}_decoded.npz"
+data = np.load(session_file)
 spike_counts = data["counts"].astype(float)       # (trials, neurons)
 coherence = data["coherence"]                     # (trials,)
 coherence_values = data["coherence_values"]       # the 11 coherences, sorted
@@ -114,12 +121,12 @@ axes[1].set_title("decoded likelihood, by true coherence")
 axes[1].legend(fontsize=7, ncol=2)
 
 fig.tight_layout()
-fig.savefig("figures/step2_decoders.png", dpi=120)
-print("\nsaved figures/step2_decoders.png")
+fig.savefig(f"figures/{session_name}_step2.png", dpi=120)
+print(f"\nsaved figures/{session_name}_step2.png")
 
-np.savez("data/decoded_likelihoods.npz",
+np.savez(decoded_file,
          names=names,
          log_likelihoods=np.array([log_likelihoods[n] for n in names]),
          scores=np.array([scores[n] for n in names]),
          coherence_values=coherence_values)
-print("saved data/decoded_likelihoods.npz")
+print(f"saved {decoded_file}")

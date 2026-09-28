@@ -15,8 +15,9 @@ same few population axes. Here we:
   2. find its axes in a unique, ordered way (SVD of the readout weights)
   3. check how well its rows match the rows of the unconstrained (full)
      decoder, coherence by coherence, against a split-half noise ceiling
-  4. (simulation only) check what the axes track, using the known
-     attention level
+  4. check what each axis tracks on single trials: coherence, and things
+     that are NOT uncertainty but could look like it (RT, time in the
+     session), plus the hidden attention level in the simulation
   5. plot how much each coherence uses each axis (the "loadings") -
      this shows how the readout changes with difficulty
 
@@ -25,6 +26,8 @@ Anything that is compared with behaviour (step 4) uses the
 cross-validated likelihoods from step 2.
 """
 
+import sys
+from pathlib import Path
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -47,7 +50,12 @@ def centred_readout(decoder):
     return weights - weights.mean(axis=0)
 
 
-data = np.load("data/simulated_session.npz")
+# Which session to analyse: a file made by step 0 (real data) or step 1
+# (the simulation, the default). Run as:  python step3_shared_axes.py data/<session>.npz
+session_file = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/simulated_session.npz")
+session_name = session_file.stem
+decoded_file = Path("data") / f"{session_name}_decoded.npz"
+data = np.load(session_file)
 spike_counts = data["counts"].astype(float)
 coherence = data["coherence"]
 coherence_values = data["coherence_values"]
@@ -55,7 +63,7 @@ n_neurons = spike_counts.shape[1]
 coherence_index = np.searchsorted(coherence_values, coherence)
 
 # Pick the rank that did best on held-out trials in step 2.
-decoded = np.load("data/decoded_likelihoods.npz")
+decoded = np.load(decoded_file)
 names = list(decoded["names"])
 mean_scores = decoded["scores"].mean(axis=1)
 low_rank_names = [n for n in names if n.startswith("rank")]
@@ -127,12 +135,26 @@ for c, row_full_a, row_full_b, row_low_rank_a in zip(
 # 4. What does each axis track on single trials?
 # ---------------------------------------------------------------------------
 position_on_axes = z_scored @ axes.T          # (trials, rank)
-print("\naxis   corr. with signed coherence   corr. with attention*")
-for k in range(best_rank):
-    r_coh = np.corrcoef(position_on_axes[:, k], coherence)[0, 1]
-    r_att = np.corrcoef(position_on_axes[:, k], data["attention"])[0, 1]
-    print(f"{k + 1:4d}   {r_coh:+27.2f}   {r_att:+20.2f}")
-print("* attention is only known because this is a simulation")
+
+# Things to compare each axis with. A width axis that simply tracks RT or
+# drifts over the session (e.g. slow changes in firing) would need more
+# care before being called "uncertainty".
+compare_with = {"signed coherence": coherence}
+if "rt" in data.files:
+    compare_with["RT"] = data["rt"]
+if "decision_time" in data.files:
+    compare_with["decision time"] = data["decision_time"]
+if "trial_number" in data.files:
+    compare_with["trial number"] = data["trial_number"]
+if "attention" in data.files:
+    compare_with["attention (simulation only)"] = data["attention"]
+
+print("\ncorrelation of each trial's position on each axis with:")
+for label, values in compare_with.items():
+    rs = [np.corrcoef(position_on_axes[:, k], values)[0, 1]
+          for k in range(best_rank)]
+    print(f"  {label:28s}" + "".join(f"   axis {k + 1}: {r:+.2f}"
+                                     for k, r in enumerate(rs)))
 
 # ---------------------------------------------------------------------------
 # 5. Figure: loadings of each coherence on each shared axis.
@@ -147,5 +169,5 @@ ax.set_ylabel("loading (how much this coherence\nuses the axis)")
 ax.set_title(f"shared axes of the {best_name} decoder")
 ax.legend()
 fig.tight_layout()
-fig.savefig("figures/step3_shared_axes.png", dpi=120)
-print("\nsaved figures/step3_shared_axes.png")
+fig.savefig(f"figures/{session_name}_step3.png", dpi=120)
+print(f"\nsaved figures/{session_name}_step3.png")
