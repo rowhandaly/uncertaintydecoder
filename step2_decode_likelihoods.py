@@ -18,6 +18,7 @@ The decoders never see the monkey's choice or wager - only coherence.
 """
 
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
 from likelihood_decoders import (FullDecoder, LowRankDecoder,
                                  FixedWidthDecoder,
@@ -43,6 +44,7 @@ decoders = {
     "full": lambda: FullDecoder(n_neurons, coherence_values),
 }
 
+torch.manual_seed(0)      # same random starting weights every run
 log_likelihoods = {}
 scores = {}
 for name, make_decoder in decoders.items():
@@ -56,11 +58,31 @@ for name, make_decoder in decoders.items():
 # Score = log probability the decoder gave to the true coherence on a trial
 # it never saw. We report each decoder relative to the full one, trial by
 # trial, so the error bar is for the paired difference.
-print("\ndecoder        held-out score relative to full (mean ± sem)")
+# A positive number means the decoder did BETTER than full on held-out
+# trials. The 95% confidence interval tells us whether "as good as full"
+# is a fair statement: if it is narrow and includes (or sits above) zero,
+# the extra flexibility of the full decoder buys nothing.
+print("\ndecoder        held-out score relative to full   95% CI")
 for name in decoders:
     difference = scores[name] - scores["full"]
     sem = difference.std() / np.sqrt(len(difference))
-    print(f"{name:12s}   {difference.mean():+.4f} ± {sem:.4f}")
+    low, high = difference.mean() - 1.96 * sem, difference.mean() + 1.96 * sem
+    print(f"{name:12s}   {difference.mean():+.4f}"
+          f"                      [{low:+.4f}, {high:+.4f}]")
+
+# ---------------------------------------------------------------------------
+# 2b. How different are the curves themselves?
+# ---------------------------------------------------------------------------
+# KL divergence between the full decoder's likelihood and each other
+# decoder's, trial by trial: 0 means identical curves. This says how much
+# two decoders DISAGREE, not which one is right (the score above does that).
+print("\ndecoder        mean KL(full || decoder), in nats")
+full_likelihood = np.exp(log_likelihoods["full"])
+for name in decoders:
+    kl_per_trial = np.sum(full_likelihood
+                          * (log_likelihoods["full"] - log_likelihoods[name]),
+                          axis=1)
+    print(f"{name:12s}   {kl_per_trial.mean():.4f}")
 
 # ---------------------------------------------------------------------------
 # 3. Figures.

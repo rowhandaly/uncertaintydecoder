@@ -13,12 +13,12 @@ same few population axes. Here we:
 
   1. fit the best low-rank decoder from step 2 on all trials
   2. find its axes in a unique, ordered way (SVD of the readout weights)
-  3. plot how much each coherence uses each axis (the "loadings") -
-     this shows how the readout changes with difficulty
-  4. check how well its rows match the rows of the unconstrained (full)
-     decoder, coherence by coherence
-  5. (simulation only) check what the axes track, using the known
+  3. check how well its rows match the rows of the unconstrained (full)
+     decoder, coherence by coherence, against a split-half noise ceiling
+  4. (simulation only) check what the axes track, using the known
      attention level
+  5. plot how much each coherence uses each axis (the "loadings") -
+     this shows how the readout changes with difficulty
 
 Note: fitting on all trials is fine here because we only look at weights.
 Anything that is compared with behaviour (step 4) uses the
@@ -29,6 +29,23 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from likelihood_decoders import FullDecoder, LowRankDecoder, train
+
+
+def centred_readout(decoder):
+    """A decoder's (11, neurons) readout weights: row c = weights for coherence c.
+
+    For the low-rank decoder that is (loadings) times (axes). Adding the
+    same vector to every row changes nothing after the softmax, so we
+    remove the average row: only differences between coherences matter.
+    """
+    with torch.no_grad():
+        if isinstance(decoder, FullDecoder):
+            weights = decoder.neurons_to_log_likelihood.weight.numpy()
+        else:
+            weights = (decoder.axes_to_log_likelihood.weight
+                       @ decoder.neurons_to_axes.weight).numpy()
+    return weights - weights.mean(axis=0)
+
 
 data = np.load("data/simulated_session.npz")
 spike_counts = data["counts"].astype(float)
@@ -47,7 +64,7 @@ best_rank = int(best_name.split()[1])
 print(f"best low-rank decoder in step 2: {best_name}")
 
 # ---------------------------------------------------------------------------
-# 1. Fit the low-rank and the full decoder on all trials.
+# 1. Fit the best low-rank decoder on all trials.
 # ---------------------------------------------------------------------------
 z_scored = (spike_counts - spike_counts.mean(axis=0)) / spike_counts.std(axis=0)
 counts_tensor = torch.tensor(z_scored, dtype=torch.float32)
@@ -56,19 +73,7 @@ index_tensor = torch.tensor(coherence_index)
 torch.manual_seed(0)
 low_rank = train(LowRankDecoder(n_neurons, coherence_values, best_rank),
                  counts_tensor, index_tensor)
-full = train(FullDecoder(n_neurons, coherence_values),
-             counts_tensor, index_tensor)
-
-with torch.no_grad():
-    # Low-rank readout = (axes -> coherences) times (neurons -> axes).
-    low_rank_weights = (low_rank.axes_to_log_likelihood.weight
-                        @ low_rank.neurons_to_axes.weight).numpy()
-    full_weights = full.neurons_to_log_likelihood.weight.numpy()
-
-# Adding the same vector to every row changes nothing after the softmax,
-# so remove it: only differences between coherences are meaningful.
-low_rank_weights = low_rank_weights - low_rank_weights.mean(axis=0)
-full_weights = full_weights - full_weights.mean(axis=0)
+low_rank_weights = centred_readout(low_rank)       # (11, neurons)
 
 # ---------------------------------------------------------------------------
 # 2. Unique, ordered axes: SVD of the readout weights.
@@ -91,13 +96,32 @@ for k in range(best_rank):
 
 # ---------------------------------------------------------------------------
 # 3. Does each coherence's readout from the low-rank decoder match the
-#    one the full decoder found on its own?
+#    one the full decoder finds on its own?
 # ---------------------------------------------------------------------------
-print("\ncoherence   correlation of low-rank and full readout weights")
-for c, low_rank_row, full_row in zip(coherence_values,
-                                     low_rank_weights, full_weights):
-    r = np.corrcoef(low_rank_row, full_row)[0, 1]
-    print(f"{c * 100:+6.1f}%    {r:.2f}")
+# The full decoder's own weights are noisy estimates, so a low correlation
+# could just mean "full is noisy". To judge fairly, fit both decoders
+# separately on two random halves of the trials (so the halves share no
+# noise) and compare:
+#   ceiling:  full (half A)     vs full (half B)  - how reproducible full is
+#   match:    low-rank (half A) vs full (half B)  - does low rank recover it?
+# If the match reaches the ceiling, the low-rank decoder recovers every
+# part of the per-coherence weights that the full decoder can reliably find.
+half_a = np.random.default_rng(0).permutation(len(coherence)) < len(coherence) // 2
+half_b = ~half_a
+full_a = centred_readout(train(FullDecoder(n_neurons, coherence_values),
+                               counts_tensor[half_a], index_tensor[half_a]))
+full_b = centred_readout(train(FullDecoder(n_neurons, coherence_values),
+                               counts_tensor[half_b], index_tensor[half_b]))
+low_rank_a = centred_readout(train(
+    LowRankDecoder(n_neurons, coherence_values, best_rank),
+    counts_tensor[half_a], index_tensor[half_a]))
+
+print("\ncoherence   ceiling: full A vs full B   match: low-rank A vs full B")
+for c, row_full_a, row_full_b, row_low_rank_a in zip(
+        coherence_values, full_a, full_b, low_rank_a):
+    ceiling = np.corrcoef(row_full_a, row_full_b)[0, 1]
+    match = np.corrcoef(row_low_rank_a, row_full_b)[0, 1]
+    print(f"{c * 100:+6.1f}%    {ceiling:23.2f}   {match:27.2f}")
 
 # ---------------------------------------------------------------------------
 # 4. What does each axis track on single trials?

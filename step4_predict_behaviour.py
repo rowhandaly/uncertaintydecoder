@@ -23,6 +23,7 @@ Comparisons (all on held-out trials):
   fixed width vs best low-rank decoder
       the fixed-width likelihood only moves, it never gets narrower or
       wider, so it carries a point estimate but no extra uncertainty
+      (the full decoder is shown too, for reference)
   shuffle control
       keep each trial's fixed-width likelihood (its point estimate) but
       give it the extra shape from a different trial with the same
@@ -107,7 +108,7 @@ def held_out_log_likelihood(neural_feature, behaviour):
                     np.searchsorted(classes, behaviour)])
 
 
-models = ["fixed width", best_name, "shuffled"]
+models = ["fixed width", best_name, "full", "shuffled"]
 choice_scores, wager_scores = {}, {}
 for name in models:
     odds = log_odds_right(log_likelihoods[name])
@@ -125,6 +126,11 @@ for label, scores in [("choice", choice_scores), ("wager", wager_scores)]:
         t, p = ttest_rel(scores[name], scores["fixed width"])
         print(f"  {name:10s} {difference.mean():+.4f}   "
               f"(total {difference.sum():+.1f}, t = {t:.2f}, p = {p:.1g})")
+    # Accuracy, for intuition: the model "gets a trial right" when it gave
+    # the monkey's actual behaviour a probability above 0.5.
+    accuracies = "   ".join(f"{name} {np.mean(np.exp(scores[name]) > 0.5):.3f}"
+                            for name in models)
+    print(f"  accuracy: {accuracies}")
     print()
 
 # ---------------------------------------------------------------------------
