@@ -1,0 +1,5 @@
+__pycache__/
+data/*.npz
+figures/*.png
+!data/.gitkeep
+!figures/.gitkeep
