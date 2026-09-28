@@ -33,36 +33,41 @@ decoded uncertainty tracks it.
 
 ## Steps
 
-- [x] **Step 1 – `step1_simulate_task.py`.** The real data are not public
-  yet, so we simulate a session: a two-accumulator race (the paper's
-  "parallel" model) sets choice, wager and decision time; 40 LIP-like
-  neurons read out the accumulators with random weights; we count Poisson
-  spikes in a fixed window. Swap in real data by saving the same arrays.
-- [x] **Step 2 – `step2_likelihood_decoder.py`.** For every trial, decode a
-  likelihood function over the 11 coherences (cross-validated, never sees
-  behaviour). With a uniform prior over coherence, Walker et al.'s
-  training objective is exactly multinomial logistic regression when the
-  network is linear, so we start there. Summaries per trial: mean, sd,
-  P(right) and confidence = max(P(right), P(left)).
-- [ ] **Step 3 – does decoded uncertainty predict the wager?** Walker's
-  test: compare a *full-likelihood* model with a *fixed-uncertainty* model
-  (same centre, fixed shape), fit separately at each coherence, and check
-  it with their shuffle control (swap likelihood shapes between trials of
-  the same coherence).
-- [ ] **Step 4 – a difficulty-invariant manifold?** Take each trial's
-  log-likelihood vector, subtract the average for its coherence (leaving
-  only trial-to-trial fluctuations), and run PCA separately for each
-  |coherence|. Then ask: (a) do a few components explain most of the
-  fluctuation? (b) do the components found at one difficulty explain the
-  fluctuations at another difficulty as well as that difficulty's own
-  components do? (the "alignment index"; compared against random
-  subspaces). (c) is the wager readable from the shared components?
+| file | what it does |
+|---|---|
+| `step1_simulate_task.py` | Simulates one session (real data aren't public yet): a two-accumulator race sets choice, wager and decision time; 40 LIP-like neurons read out the accumulators; Poisson spike counts in the first 400 ms. A trial-to-trial **attention** level scales both the evidence and the firing, which gives trials a real uncertainty signal. `ATTENTION_SD = 0` switches it off (the null case). |
+| `likelihood_decoders.py` | The decoders and their training (Walker et al.'s objective: `log_softmax(log L + log prior)` trained with cross-entropy against the true coherence). **Full**: free weights for every coherence. **Low rank**: every coherence is read out from the same few population axes. **Fixed width**: a bump of fixed width that only moves (Walker's "fixed-uncertainty" decoder). |
+| `step2_decode_likelihoods.py` | Decodes a cross-validated likelihood over the 11 coherences on every trial with each decoder, and compares them on held-out trials. *How many shared axes does decoding need?* |
+| `step3_shared_axes.py` | Takes the best low-rank decoder, finds its axes (SVD of the readout weights) and plots how much each coherence uses each axis. Checks the per-coherence readouts against the unconstrained decoder. |
+| `step4_predict_behaviour.py` | Walker's behavioural test on choice **and wager**: at fixed coherence, does the flexible likelihood predict behaviour better than the fixed-width one? Includes the shuffle control (swap likelihood shapes between trials of the same coherence). |
+
+## What the simulation gives (as a check that the pipeline works)
+
+With attention on (`ATTENTION_SD = 0.3`):
+- Rank 2 decodes held-out trials best, better than rank 1 *and* the full decoder.
+- Axis 1 is loaded in proportion to signed coherence (the point estimate);
+  axis 2 is U-shaped in |coherence| and tracks the hidden attention level
+  on single trials (r = 0.95), even though the decoder was only ever
+  trained on coherence.
+- The rank-2 likelihood predicts choice and wager better than the
+  fixed-width one; shuffling shapes within coherence removes the benefit.
+
+With attention off (`ATTENTION_SD = 0`): rank 1 wins and the benefit for
+behaviour disappears.
+
+## Later ideas
+
+- Walker's nonlinear decoder (add hidden layers + ReLU in `likelihood_decoders.py`).
+- Timing: decode in sliding windows / aligned to saccade, and relate to RT.
+- A pre-saccade window, where the wager signal in LIP is strongest.
 
 ## Running
 
 ```
 pip install -r requirements.txt
-mkdir -p data figures
 python step1_simulate_task.py
-python step2_likelihood_decoder.py
+python step2_decode_likelihoods.py     # ~45 s
+python step3_shared_axes.py
+python step4_predict_behaviour.py
 ```
+Figures go to `figures/`, intermediate arrays to `data/`.

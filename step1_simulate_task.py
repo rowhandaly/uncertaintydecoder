@@ -19,6 +19,12 @@ LIP neurons are modelled very simply: each neuron's firing rate is a
 weighted sum of the two accumulators, and we count Poisson spikes in one
 fixed window at the start of the trial.
 
+One extra ingredient gives trials a genuine uncertainty signal: an
+"attention" level that changes from trial to trial. On high-attention
+trials the evidence is stronger (bigger drift) AND the neurons fire more
+spikes, so the population's likelihood is sharper. Set ATTENTION_SD = 0
+to switch it off and get a session where no such signal exists.
+
 The real data are not public yet, so everything downstream only needs the
 arrays saved at the end of this file. Swap them for real data later.
 """
@@ -43,6 +49,7 @@ DRIFT_GAIN = 6.0        # how strongly coherence pushes the accumulators
 NOISE_CORR = -0.7       # correlation between the two accumulators' noise
 BOUND = 1.0             # decision bound
 WAGER_CRITERION = -0.6  # bet high if the loser ended below this value
+ATTENTION_SD = 0.3      # trial-to-trial spread of attention (0 = none)
 
 # ---------------------------------------------------------------------------
 # LIP population settings
@@ -52,7 +59,7 @@ BASELINE_RATE = 20.0    # spikes per second
 WINDOW = 0.4            # count spikes in the first 400 ms of the decision
 
 
-def simulate_trial(coherence):
+def simulate_trial(coherence, attention):
     """Run the race between the two accumulators for one trial.
 
     Returns the full time course of both accumulators (frozen once the
@@ -66,7 +73,8 @@ def simulate_trial(coherence):
     noise = noise * np.sqrt(DT)
 
     # Mean change per step: rightward motion pushes "right" up and "left" down.
-    drift = DRIFT_GAIN * coherence * DT
+    # Higher attention means stronger evidence per unit time.
+    drift = DRIFT_GAIN * attention * coherence * DT
     steps_right = drift + noise[:, 0]
     steps_left = -drift + noise[:, 1]
 
@@ -108,7 +116,8 @@ def make_neurons():
     return baseline, weight_right, weight_left
 
 
-def spike_counts(right, left, baseline, weight_right, weight_left):
+def spike_counts(right, left, attention,
+                 baseline, weight_right, weight_left):
     """Poisson spike counts in the first WINDOW seconds of one trial."""
     n_window = int(WINDOW / DT)
     r = right[:n_window]                     # shape (time,)
@@ -117,6 +126,7 @@ def spike_counts(right, left, baseline, weight_right, weight_left):
     # Firing rate of every neuron at every time step: shape (time, neurons).
     rate = baseline + np.outer(r, weight_right) + np.outer(l, weight_left)
     rate = np.clip(rate, 0, None)            # rates cannot be negative
+    rate = attention * rate                  # attention scales all firing
 
     # Expected number of spikes = rate integrated over the window.
     expected_count = rate.sum(axis=0) * DT
@@ -127,6 +137,8 @@ if __name__ == "__main__":
     baseline, weight_right, weight_left = make_neurons()
 
     coherence = rng.choice(COHERENCES, size=N_TRIALS)
+    # Attention varies around 1 from trial to trial (log-normal, always > 0).
+    attention = np.exp(ATTENTION_SD * rng.normal(size=N_TRIALS))
     choice = np.zeros(N_TRIALS, dtype=int)
     wager = np.zeros(N_TRIALS, dtype=int)
     decision_time = np.zeros(N_TRIALS)
@@ -134,8 +146,8 @@ if __name__ == "__main__":
 
     for i in range(N_TRIALS):
         right, left, choice[i], wager[i], decision_time[i] = \
-            simulate_trial(coherence[i])
-        counts[i] = spike_counts(right, left,
+            simulate_trial(coherence[i], attention[i])
+        counts[i] = spike_counts(right, left, attention[i],
                                  baseline, weight_right, weight_left)
 
     # Quick sanity check of the behaviour, one line per unsigned coherence.
@@ -151,5 +163,6 @@ if __name__ == "__main__":
     np.savez("data/simulated_session.npz",
              coherence=coherence, choice=choice, wager=wager,
              decision_time=decision_time, counts=counts,
+             attention=attention,
              coherence_values=COHERENCES)
     print("saved data/simulated_session.npz")
