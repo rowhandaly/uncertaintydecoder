@@ -226,7 +226,8 @@ if sessions:
 # 3. Figure: one dot per session, for the key comparisons (step 4).
 # ---------------------------------------------------------------------------
 if not per_session:
-    raise SystemExit("\n(no step 4 results for this window, so no figure)")
+    print("\n(no step 4 results for this window, so no figure)")
+    sys.exit()
 fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
 for ax, behaviour in zip(axes, ["choice", "wager"]):
     for x, (question, a, b) in enumerate(comparisons):
