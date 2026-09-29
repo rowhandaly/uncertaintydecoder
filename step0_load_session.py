@@ -52,7 +52,8 @@ SAMPLE_RATE = 30000
 # least this long after motion onset to contain only stimulus responses.
 RESPONSE_LATENCY = 0.08
 
-# Which units to use: the lab's Region label, and not curated as noise.
+# Which units to use by default: the lab's Region label, and not curated
+# as noise. Other areas can be chosen with --regions (e.g. --regions LIP).
 REGIONS = ["MT", "MST"]
 
 # Sessions with fewer units or trials than this are skipped.
@@ -75,12 +76,21 @@ HIGH_BET = 1                 # PDW message value for a high bet
 MOTION_TTL_CHANNEL = 4       # TTL channel that is on while the dots are shown
 
 
-def window_tag(align, start, length, rt_band=None):
-    """Short name for a window, used in file names: e.g. onset+80_250ms,
-    or offset-300_250ms_rt500-800 when only RTs of 0.5-0.8 s are kept."""
+def window_tag(align, start, length, rt_band=None, regions=None,
+               max_coherence=None):
+    """Short name for an analysis, used in file names. Examples:
+        onset+80_250ms              MT/MST, 80 ms after onset, 250 ms long
+        offset-300_250ms_rt500-800  ... only trials with RT 0.5-0.8 s
+        onset+80_250ms_coh128       ... only trials with |coherence| <= 12.8%
+        LIP_onset+80_250ms          ... LIP units instead of MT/MST
+    """
     tag = f"{align}{round(start * 1000):+d}_{round(length * 1000)}ms"
     if rt_band is not None:
         tag += f"_rt{round(rt_band[0] * 1000)}-{round(rt_band[1] * 1000)}"
+    if max_coherence is not None:
+        tag += f"_coh{round(max_coherence * 1000)}"
+    if regions is not None and sorted(regions) != sorted(REGIONS):
+        tag = "+".join(regions) + "_" + tag
     return tag
 
 
@@ -156,7 +166,7 @@ def motion_times(recording, trial_start_times):
     return onset, offset
 
 
-def load_units(recording):
+def load_units(recording, regions):
     """Spike times (in clock samples) for each selected unit."""
     continuous = one_match(recording, "continuous/Rhythm_FPGA-*")
     kilosort = continuous / "kilosort"
@@ -169,7 +179,7 @@ def load_units(recording):
     for column in ["group", "KSLabel", "TargSelect", "Unit", "fr"]:
         if column not in info.columns:
             info[column] = np.nan
-    selected = info[info["Region"].isin(REGIONS) & (info["group"] != "noise")]
+    selected = info[info["Region"].isin(regions) & (info["group"] != "noise")]
 
     # Kilosort counts samples from the start of the .dat file; the clock
     # started at the first entry of timestamps.npy (see sync_messages.txt).
@@ -230,10 +240,17 @@ if __name__ == "__main__":
     # since onset, e.g. adaptation, which could mimic a difficulty signal.)
     parser.add_argument("--rt-band", type=float, nargs=2, default=None,
                         metavar=("MIN_RT", "MAX_RT"))
+    # Which brain area's units to use (the lab's Region labels).
+    parser.add_argument("--regions", nargs="+", default=REGIONS)
+    # Optional: keep only trials with |coherence| up to this value, e.g.
+    # 0.128. Tests whether the shared axes are needed across the difficult
+    # coherences too, or only to tell the strongest motion apart.
+    parser.add_argument("--max-coherence", type=float, default=None)
     args = parser.parse_args()
 
     session_name = args.session_folder.name
-    tag = window_tag(args.align, args.start, args.length, args.rt_band)
+    tag = window_tag(args.align, args.start, args.length, args.rt_band,
+                     args.regions, args.max_coherence)
     recording = one_match(args.session_folder,
                           "Record Node */experiment*/recording*")
     print(f"session: {session_name}   window: {tag}\n"
@@ -314,6 +331,8 @@ if __name__ == "__main__":
               & (window_ends <= task["motion_off"])).to_numpy()
     if args.rt_band is not None:
         inside = inside & task["rt"].between(*args.rt_band).to_numpy()
+    if args.max_coherence is not None:
+        inside = inside & (task["coherence"].abs() <= args.max_coherence + 1e-9).to_numpy()
     print(f"window {tag}: keeping {inside.sum()} of {len(task)} trials")
     print("trials kept per |coherence|:")
     print(task[inside].groupby(task["coherence"].abs()).size().to_string(), "\n")
@@ -321,8 +340,8 @@ if __name__ == "__main__":
     window_starts, window_ends = window_starts[inside], window_ends[inside]
 
     # 6. Spike counts for the selected units, then remove slow drift.
-    units, spikes_per_unit = load_units(recording)
-    print(f"units in {REGIONS}, not noise: {len(units)}")
+    units, spikes_per_unit = load_units(recording, args.regions)
+    print(f"units in {args.regions}, not noise: {len(units)}")
     print(units[["id", "Region", "group", "KSLabel", "TargSelect", "Unit", "fr"]]
           .to_string(index=False), "\n")
     if len(units) < MIN_UNITS or len(task) < MIN_TRIALS:
@@ -349,5 +368,6 @@ if __name__ == "__main__":
              unit_target=units["TargSelect"].astype(str).to_numpy(dtype=str),
              unit_type=units["Unit"].astype(str).to_numpy(dtype=str),
              window=np.array([args.start, args.length]),
-             window_align=args.align)
+             window_align=args.align,
+             regions=np.array(args.regions))
     print(f"saved {output}")
