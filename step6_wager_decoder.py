@@ -70,6 +70,14 @@ position = np.interp(trial_order, (trial_order.min(), trial_order.max()), (-1, 1
 baseline_columns = np.column_stack([coherence_columns,
                                     position, position ** 2, position ** 3])
 
+# The direct decoders are regularised (a penalty on large weights) so the
+# neurons can't overfit - but the penalty should not also shrink the
+# baseline, or the model would lose the stimulus information and do worse
+# than the baseline on its own. Scaling the baseline columns up by 1000 lets
+# their weights be 1000 times smaller for the same effect, which makes their
+# penalty negligible. (The neurons are z-scored, so they're unaffected.)
+UNPENALISED = 1000
+
 
 # ---------------------------------------------------------------------------
 # 1-2. Direct decoders: do the neurons predict wager / choice beyond the
@@ -80,7 +88,8 @@ def held_out_log_likelihood(features, behaviour, choose_regularisation):
     if choose_regularisation:
         # Tries 10 strengths, picks the best by 5-fold CV inside each
         # training set - so the held-out trials never influence the choice.
-        model = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000)
+        model = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000,
+                                     scoring="neg_log_loss")
     else:
         model = LogisticRegression(C=100, max_iter=2000)
     folds = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
@@ -93,8 +102,8 @@ def held_out_log_likelihood(features, behaviour, choose_regularisation):
 scores = {}
 for label, behaviour in [("wager", wager), ("choice", choice)]:
     baseline = held_out_log_likelihood(baseline_columns, behaviour, False)
-    direct = held_out_log_likelihood(np.column_stack([baseline_columns, z_scored]),
-                                     behaviour, True)
+    direct = held_out_log_likelihood(
+        np.column_stack([baseline_columns * UNPENALISED, z_scored]), behaviour, True)
     scores[f"{label} baseline"] = baseline
     scores[f"{label} direct"] = direct
     difference = direct - baseline
@@ -109,7 +118,7 @@ def neural_direction(behaviour, C):
     """The weights a behaviour decoder puts on the neurons (baseline
     columns included in the fit, but their weights dropped)."""
     model = LogisticRegression(C=C, max_iter=2000)
-    model.fit(np.column_stack([baseline_columns, z_scored]), behaviour)
+    model.fit(np.column_stack([baseline_columns * UNPENALISED, z_scored]), behaviour)
     return model.coef_[0, baseline_columns.shape[1]:]
 
 
@@ -121,9 +130,11 @@ def angle(a, b):
 
 
 # The regularisation for each decoder, chosen once on all trials.
-features = np.column_stack([baseline_columns, z_scored])
-C_wager = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000).fit(features, wager).C_[0]
-C_choice = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000).fit(features, choice).C_[0]
+features = np.column_stack([baseline_columns * UNPENALISED, z_scored])
+C_wager = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000,
+                               scoring="neg_log_loss").fit(features, wager).C_[0]
+C_choice = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000,
+                                scoring="neg_log_loss").fit(features, choice).C_[0]
 wager_direction = neural_direction(wager, C_wager)
 choice_direction = neural_direction(choice, C_choice)
 
