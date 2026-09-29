@@ -160,6 +160,11 @@ def load_units(recording):
     if "Region" not in info.columns:
         raise SystemExit("SKIP: cluster_info.tsv has no Region column "
                          "(units not labelled in Phy)")
+    # The other lab labels are only printed and saved for reference, and
+    # not every session has all of them: add any that are missing as blank.
+    for column in ["group", "KSLabel", "TargSelect", "Unit", "fr"]:
+        if column not in info.columns:
+            info[column] = np.nan
     selected = info[info["Region"].isin(REGIONS) & (info["group"] != "noise")]
 
     # Kilosort counts samples from the start of the .dat file; the clock
