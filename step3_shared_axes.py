@@ -139,7 +139,8 @@ position_on_axes = z_scored @ axes.T          # (trials, rank)
 # Things to compare each axis with. A width axis that simply tracks RT or
 # drifts over the session (e.g. slow changes in firing) would need more
 # care before being called "uncertainty".
-compare_with = {"signed coherence": coherence}
+compare_with = {"signed coherence": coherence,
+                "|coherence|": np.abs(coherence)}
 if "rt" in data.files:
     compare_with["RT"] = data["rt"]
 if "decision_time" in data.files:
@@ -152,6 +153,33 @@ if "attention" in data.files:
 print("\ncorrelation of each trial's position on each axis with:")
 for label, values in compare_with.items():
     rs = [np.corrcoef(position_on_axes[:, k], values)[0, 1]
+          for k in range(best_rank)]
+    print(f"  {label:28s}" + "".join(f"   axis {k + 1}: {r:+.2f}"
+                                     for k, r in enumerate(rs)))
+
+
+def within_coherence(values):
+    """Each trial's value minus the average for its coherence."""
+    values = np.asarray(values, dtype=float)
+    deviations = np.zeros_like(values)
+    for c in coherence_values:
+        trials = coherence == c
+        deviations[trials] = values[trials] - values[trials].mean(axis=0)
+    return deviations
+
+
+# The same, but WITHIN a coherence: both the axis position and the other
+# variable are measured relative to their average at that coherence. RT
+# depends on coherence, and so do the axes, so the correlations above can
+# be driven by the stimulus alone. These ones cannot - they are about
+# trial-to-trial fluctuations, which is what the wager test is about.
+print("\nsame, within coherence (trial-to-trial fluctuations only):")
+position_deviation = within_coherence(position_on_axes)
+for label, values in compare_with.items():
+    if label in ("signed coherence", "|coherence|"):
+        continue                    # constant within a coherence
+    value_deviation = within_coherence(values)
+    rs = [np.corrcoef(position_deviation[:, k], value_deviation)[0, 1]
           for k in range(best_rank)]
     print(f"  {label:28s}" + "".join(f"   axis {k + 1}: {r:+.2f}"
                                      for k, r in enumerate(rs)))

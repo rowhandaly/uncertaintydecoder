@@ -77,6 +77,17 @@ for name in decoders:
     print(f"{name:12s}   {difference.mean():+.4f}"
           f"                      [{low:+.4f}, {high:+.4f}]")
 
+# Does each extra shared axis help? Compare each rank directly with the
+# one below it, trial by trial. The numbers above are each relative to
+# full, so their differences don't come with an error bar; these do.
+print("\nextra axis           held-out score gain   95% CI")
+for lower, higher in [("rank 1", "rank 2"), ("rank 2", "rank 3")]:
+    difference = scores[higher] - scores[lower]
+    sem = difference.std() / np.sqrt(len(difference))
+    low, high = difference.mean() - 1.96 * sem, difference.mean() + 1.96 * sem
+    print(f"{higher} vs {lower}     {difference.mean():+.4f}"
+          f"               [{low:+.4f}, {high:+.4f}]")
+
 # ---------------------------------------------------------------------------
 # 2b. How different are the curves themselves?
 # ---------------------------------------------------------------------------

@@ -105,8 +105,14 @@ coherence_columns = (coherence[:, None] == coherence_values).astype(float)
 
 def held_out_log_likelihood(neural_feature, behaviour):
     """Log probability of the behaviour on each trial, from a model that
-    never saw that trial. Higher = better prediction."""
-    features = np.column_stack([coherence_columns, neural_feature])
+    never saw that trial. Higher = better prediction.
+
+    neural_feature=None fits the coherence intercepts alone: the baseline
+    that knows the stimulus but nothing about the neurons."""
+    if neural_feature is None:
+        features = coherence_columns
+    else:
+        features = np.column_stack([coherence_columns, neural_feature])
     model = LogisticRegression(C=100, max_iter=1000)
     p = cross_val_predict(model, features, behaviour, cv=10,
                           method="predict_proba")
@@ -115,28 +121,45 @@ def held_out_log_likelihood(neural_feature, behaviour):
                     np.searchsorted(classes, behaviour)])
 
 
-models = ["fixed width", best_name, "full", "shuffled"]
-choice_scores, wager_scores = {}, {}
+models = ["fixed width", "rank 1", best_name, "full", "shuffled"]
+models = list(dict.fromkeys(models))       # drop "rank 1" if it is the best
+choice_scores = {"coherence only": held_out_log_likelihood(None, choice)}
+wager_scores = {"coherence only": held_out_log_likelihood(None, wager)}
 for name in models:
     odds = log_odds_right(log_likelihoods[name])
     choice_scores[name] = held_out_log_likelihood(odds, choice)
     wager_scores[name] = held_out_log_likelihood(np.abs(odds), wager)
 
 # ---------------------------------------------------------------------------
-# 3. Report, relative to the fixed-width model (like Walker et al. Fig. 5).
+# 3. Report the comparisons that matter, in order.
 # ---------------------------------------------------------------------------
+# Each line: model A minus model B, held-out log-likelihood per trial.
+#   1. Do the neurons add ANYTHING beyond the stimulus? If not, there is
+#      nothing for the likelihood's shape to explain, and 2-4 will be ~0.
+#   2. Walker's test: flexible likelihood vs fixed width.
+#   3. Stricter: best low-rank vs rank 1 (both decode well; only the
+#      extra axis differs).
+#   4. Shuffle control: should be <= 0 if 2 is real.
+comparisons = [
+    ("neurons add anything?", "fixed width", "coherence only"),
+    ("Walker's test", best_name, "fixed width"),
+    ("extra axis", best_name, "rank 1"),
+    ("full vs fixed", "full", "fixed width"),
+    ("shuffle control", "shuffled", "fixed width"),
+]
 for label, scores in [("choice", choice_scores), ("wager", wager_scores)]:
-    print(f"predicting {label}: held-out log-likelihood per trial, "
-          f"relative to fixed width")
-    for name in models[1:]:
-        difference = scores[name] - scores["fixed width"]
-        t, p = ttest_rel(scores[name], scores["fixed width"])
-        print(f"  {name:10s} {difference.mean():+.4f}   "
-              f"(total {difference.sum():+.1f}, t = {t:.2f}, p = {p:.1g})")
+    print(f"predicting {label}: held-out log-likelihood per trial (A - B)")
+    for question, a, b in comparisons:
+        if a == b:
+            continue
+        difference = scores[a] - scores[b]
+        t, p = ttest_rel(scores[a], scores[b])
+        print(f"  {question:22s} {a:>11s} - {b:<14s} {difference.mean():+.4f}"
+              f"   (total {difference.sum():+.1f}, t = {t:.2f}, p = {p:.1g})")
     # Accuracy, for intuition: the model "gets a trial right" when it gave
     # the monkey's actual behaviour a probability above 0.5.
     accuracies = "   ".join(f"{name} {np.mean(np.exp(scores[name]) > 0.5):.3f}"
-                            for name in models)
+                            for name in scores)
     print(f"  accuracy: {accuracies}")
     print()
 
