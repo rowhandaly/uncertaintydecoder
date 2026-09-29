@@ -103,6 +103,59 @@ for i, session in enumerate(sessions):
           f"   {wager_neurons[i]:+14.4f}   {wager_walker[i]:+13.4f}")
 
 # ---------------------------------------------------------------------------
+# 2b. Direct wager decoder and population directions (from step 6)
+# ---------------------------------------------------------------------------
+wager_files = [Path("data") / f"{s}__{window}_wager.npz" for s in sessions]
+if all(f.exists() for f in wager_files):
+    print("\ndirect decoders (held-out log-likelihood per trial, A - B):")
+    direct = {"wager": [], "choice": [], "wager direct vs likelihood": []}
+    for f_wager, f_behaviour in zip(wager_files, behaviour_files):
+        saved = np.load(f_wager)
+        scores = dict(zip(saved["names"], saved["scores"]))
+        for label in ["wager", "choice"]:
+            direct[label].append(scores[f"{label} direct"] - scores[f"{label} baseline"])
+        # Does decoding the wager directly beat going through the
+        # likelihood (step 4's rank-2 features)? Each is measured against
+        # its own baseline, so the two gains can be compared trial by trial.
+        step4 = np.load(f_behaviour)
+        step4_scores = dict(zip(step4["names"], step4["wager_scores"]))
+        likelihood_gain = step4_scores["rank 2"] - step4_scores["baseline"]
+        direct["wager direct vs likelihood"].append(
+            (scores["wager direct"] - scores["wager baseline"]) - likelihood_gain)
+    summarise("wager: direct decoder - baseline", direct["wager"])
+    summarise("choice: direct decoder - baseline", direct["choice"])
+    summarise("wager: direct gain - likelihood gain", direct["wager direct vs likelihood"])
+
+    print("\nangles between population directions (degrees; 90 = orthogonal)")
+    print("null = wager decoder refitted with wagers shuffled within coherence")
+    print(f"  {'session':28s} {'units':>5s}   wager-coh (null)   p(aligned)"
+          f"   wager-choice (null)   p(aligned)   choice-coh")
+    observed_minus_null = {"wager vs coherence axis": [], "wager vs choice": []}
+    for i, f in enumerate(wager_files):
+        saved = np.load(f)
+        angles = dict(zip(saved["angle_names"], saved["angles"]))
+        null_coh = saved["null_wager_coherence"]
+        null_choice = saved["null_wager_choice"]
+        observed_minus_null["wager vs coherence axis"].append(
+            angles["wager vs coherence axis"] - null_coh.mean())
+        observed_minus_null["wager vs choice"].append(
+            angles["wager vs choice"] - null_choice.mean())
+        print(f"  {sessions[i]:28s} {n_units[i]:5d}"
+              f"   {angles['wager vs coherence axis']:5.1f} ({null_coh.mean():4.1f})"
+              f"   {np.mean(null_coh <= angles['wager vs coherence axis']):10.2f}"
+              f"   {angles['wager vs choice']:8.1f} ({null_choice.mean():4.1f})"
+              f"   {np.mean(null_choice <= angles['wager vs choice']):12.2f}"
+              f"   {angles['choice vs coherence axis']:10.1f}")
+    # Across sessions: is the wager direction consistently closer to (or
+    # further from) the other directions than a noise-fitted decoder?
+    for name, values in observed_minus_null.items():
+        values = np.array(values)
+        test = ttest_1samp(values, 0)
+        print(f"  {name}: observed - null = {values.mean():+.1f} deg on average "
+              f"(negative = more aligned than chance), t = {test.statistic:+.2f}, "
+              f"p = {test.pvalue:.2g}")
+
+# ---------------------------------------------------------------------------
 # 3. Figure: one dot per session, for the key comparisons.
 # ---------------------------------------------------------------------------
 fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)

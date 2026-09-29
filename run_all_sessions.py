@@ -5,7 +5,8 @@ For each session folder and each analysis (a brain area + a spike window):
     step 0  load the session, count spikes in the window
     step 2  decode likelihoods (all decoders, cross-validated)
     step 3  describe the shared axes
-    step 4  predict choice and wager
+    step 4  predict choice and wager from the likelihood
+    step 6  decode the wager (and choice) directly; population directions
 Then for each analysis:
     step 5  pool all sessions
 
@@ -13,9 +14,9 @@ Each step's printed output goes to logs/<session>__<analysis>_stepN.txt.
 A session that fails a check in step 0 (e.g. too few units) is skipped and
 listed at the end; the others carry on.
 
-Analyses that already have results (their step 4 output exists) are not
-run again, so new analyses can be added without redoing old ones. To redo
-one, delete its files in data/ (data/*__<analysis>*).
+Each step only runs if its output file doesn't exist yet, so new steps or
+analyses can be added without redoing old ones. To redo something, delete
+its files (data/*__<analysis>*, figures/*__<analysis>*).
 
 Usage (on Rockfish, from the repository folder):
     python run_all_sessions.py /home/cfetsch1/vast-cfetsch1/data/hanzo_neuro_binary
@@ -77,36 +78,41 @@ problems = []
 for folder in session_folders:
     for analysis in ANALYSES:
         name = f"{folder.name}__{analysis['tag']}"
-        print(f"{name} ...", end=" ", flush=True)
-        if Path(f"data/{name}_behaviour.npz").exists():
-            print("already done")
-            continue
-
-        command = ["step0_load_session.py", str(folder),
-                   "--align", analysis["align"],
-                   "--start", str(analysis["start"]),
-                   "--length", str(analysis["length"]),
-                   "--regions", *analysis["regions"]]
-        if analysis["rt_band"] is not None:
-            command += ["--rt-band", *map(str, analysis["rt_band"])]
-        if analysis["max_coherence"] is not None:
-            command += ["--max-coherence", str(analysis["max_coherence"])]
-        if not run(command, f"logs/{name}_step0.txt"):
-            # The last line of the log says why (e.g. "SKIP: ...").
-            reason = Path(f"logs/{name}_step0.txt").read_text().strip().splitlines()[-1]
-            print(f"skipped: {reason}")
-            problems.append(f"{name}: {reason}")
-            continue
-
         session_file = f"data/{name}.npz"
-        for step in ["step2_decode_likelihoods.py", "step3_shared_axes.py",
-                     "step4_predict_behaviour.py"]:
-            if not run([step, session_file], f"logs/{name}_{step[:5]}.txt"):
-                print(f"FAILED at {step} (see logs/{name}_{step[:5]}.txt)")
-                problems.append(f"{name}: failed at {step}")
+        print(f"{name} ...", end=" ", flush=True)
+
+        # Each step and the file it makes; a step is skipped if its file exists.
+        step0 = ["step0_load_session.py", str(folder),
+                 "--align", analysis["align"],
+                 "--start", str(analysis["start"]),
+                 "--length", str(analysis["length"]),
+                 "--regions", *analysis["regions"]]
+        if analysis["rt_band"] is not None:
+            step0 += ["--rt-band", *map(str, analysis["rt_band"])]
+        if analysis["max_coherence"] is not None:
+            step0 += ["--max-coherence", str(analysis["max_coherence"])]
+        steps = [
+            ("step0", step0, session_file),
+            ("step2", ["step2_decode_likelihoods.py", session_file], f"data/{name}_decoded.npz"),
+            ("step3", ["step3_shared_axes.py", session_file], f"figures/{name}_step3.png"),
+            ("step4", ["step4_predict_behaviour.py", session_file], f"data/{name}_behaviour.npz"),
+            ("step6", ["step6_wager_decoder.py", session_file], f"data/{name}_wager.npz"),
+        ]
+
+        ran = []
+        for label, command, output in steps:
+            if Path(output).exists():
+                continue
+            log = f"logs/{name}_{label}.txt"
+            if not run(command, log):
+                # The last line of the log says why (e.g. "SKIP: ...").
+                reason = Path(log).read_text().strip().splitlines()[-1]
+                print(f"{'skipped' if label == 'step0' else 'FAILED at ' + label}: {reason}")
+                problems.append(f"{name}: {label}: {reason}")
                 break
+            ran.append(label)
         else:
-            print("done")
+            print(f"done ({', '.join(ran)})" if ran else "already done")
 
 print()
 for analysis in ANALYSES:

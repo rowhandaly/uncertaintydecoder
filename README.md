@@ -46,6 +46,7 @@ decoded uncertainty tracks it.
 | `step2_decode_likelihoods.py` | Decodes a cross-validated likelihood over the 11 coherences on every trial with each decoder, and compares them on held-out trials. *How many shared axes does decoding need?* |
 | `step3_shared_axes.py` | Takes the best low-rank decoder, finds its axes (SVD of the readout weights) and plots how much each coherence uses each axis. Checks the per-coherence readouts against the unconstrained decoder. |
 | `step4_predict_behaviour.py` | Walker's behavioural test on choice **and wager**: at fixed coherence (and allowing for slow drift), does the rank-2 likelihood predict behaviour better than the fixed-width one? Also: do the neurons add anything beyond the stimulus at all, and does rank 2 beat rank 1? Includes the shuffle control. Saves per-trial scores. |
+| `step6_wager_decoder.py` | Decodes the wager (and choice) **directly** from the spike counts, beyond the stimulus, and measures the angles between the wager direction, the choice direction and the coherence axis, against a shuffled-wager null. Tests whether wager information is present even where the likelihood's shape doesn't carry it. |
 | `step5_pool_sessions.py` | Pools all sessions for one window: every comparison from steps 2 and 4, tested over all trials together and across sessions (one number per session). |
 | `run_all_sessions.py` | Runs steps 0 and 2-4 on every session for each analysis (area + window), then step 5. Skips analyses that already have results. Logs go to `logs/`. `run_all_sessions.sbatch` submits it as a Rockfish batch job. |
 
@@ -105,7 +106,7 @@ Figures go to `figures/`, intermediate arrays to `data/`, logs to `logs/`.
 - [ ] Check what axis 2 tracks (step 3 prints its correlation with RT and
       trial number, overall and within coherence) before calling it
       uncertainty.
-- [ ] Compare with a decoder trained directly on the wager
-      (Vivar-Lazo & Fetsch's approach).
+- [x] Compare with a decoder trained directly on the wager
+      (Vivar-Lazo & Fetsch's approach): step 6.
 - [ ] Optional: Walker's nonlinear decoder; a sensory (MT-like) version of
       the simulation.
