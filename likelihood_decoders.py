@@ -27,6 +27,11 @@ import torch
 from torch import nn
 from sklearn.model_selection import KFold
 
+# These models are tiny, so extra CPU threads only add overhead - and on a
+# shared machine (e.g. a cluster login node) many threads competing for a
+# few throttled cores can make training crawl. One thread is fastest here.
+torch.set_num_threads(1)
+
 
 class FullDecoder(nn.Module):
     def __init__(self, n_neurons, coherence_values):
