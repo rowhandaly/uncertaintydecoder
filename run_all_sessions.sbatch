@@ -17,6 +17,13 @@
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/run_all.txt
 
+# The login shell loads Rockfish's default modules, including an older
+# gcc whose C++ library (libstdc++) shadows anaconda's newer one and
+# breaks pandas ("GLIBCXX_3.4.29 not found"). Unload the modules and put
+# anaconda's own libraries first.
+module purge 2>/dev/null
+export LD_LIBRARY_PATH="$HOME/anaconda3/lib:$LD_LIBRARY_PATH"
+
 echo "started $(date) on $(hostname)"
 echo "python: $(which python)"
 python -c "import torch, pandas, sklearn; print('packages ok')"
