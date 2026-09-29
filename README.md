@@ -40,12 +40,14 @@ decoded uncertainty tracks it.
 
 | file | what it does |
 |---|---|
-| `step0_load_session.py` | **Real data.** Runs on Rockfish next to a session folder (Open Ephys binary + Kilosort/Phy). Reads the task's network text messages (coherence, direction, choice, PDW, RT), motion onset/offset from TTL channel 4, and spike times of units labelled MT/MST (not noise). Counts spikes in a fixed window after motion onset and saves `data/<session>.npz` in the same format as step 1. Prints a table to check the choice/wager conventions. |
+| `step0_load_session.py` | **Real data.** Runs on Rockfish next to a session folder (Open Ephys binary + Kilosort/Phy). Reads the task's network text messages (coherence, direction, choice, PDW, RT), motion onset/offset from TTL channel 4, and spike times of units labelled MT/MST (not noise). Counts spikes in a fixed-length window aligned to motion onset or offset (`--align`, `--start`, `--length`), removes each unit's slow drift over the session, and saves `data/<session>__<window>.npz` in the same format as step 1. Checks the TTL, choice and wager codings automatically and skips sessions that fail. |
 | `step1_simulate_task.py` | Simulates one session (real data aren't public yet): a two-accumulator race sets choice, wager and decision time; 40 LIP-like neurons read out the accumulators; Poisson spike counts in the first 400 ms. A trial-to-trial **attention** level scales both the evidence and the firing, which gives trials a real uncertainty signal. `ATTENTION_SD = 0` switches it off (the null case). |
 | `likelihood_decoders.py` | The decoders and their training (Walker et al.'s objective: `log_softmax(log L + log prior)` trained with cross-entropy against the true coherence). **Full**: free weights for every coherence. **Low rank**: every coherence is read out from the same few population axes. **Fixed width**: a bump of fixed width that only moves (Walker's "fixed-uncertainty" decoder). |
 | `step2_decode_likelihoods.py` | Decodes a cross-validated likelihood over the 11 coherences on every trial with each decoder, and compares them on held-out trials. *How many shared axes does decoding need?* |
 | `step3_shared_axes.py` | Takes the best low-rank decoder, finds its axes (SVD of the readout weights) and plots how much each coherence uses each axis. Checks the per-coherence readouts against the unconstrained decoder. |
-| `step4_predict_behaviour.py` | Walker's behavioural test on choice **and wager**: at fixed coherence, does the flexible likelihood predict behaviour better than the fixed-width one? Includes the shuffle control (swap likelihood shapes between trials of the same coherence). |
+| `step4_predict_behaviour.py` | Walker's behavioural test on choice **and wager**: at fixed coherence (and allowing for slow drift), does the rank-2 likelihood predict behaviour better than the fixed-width one? Also: do the neurons add anything beyond the stimulus at all, and does rank 2 beat rank 1? Includes the shuffle control. Saves per-trial scores. |
+| `step5_pool_sessions.py` | Pools all sessions for one window: every comparison from steps 2 and 4, tested over all trials together and across sessions (one number per session). |
+| `run_all_sessions.py` | Runs steps 0 and 2-4 on every session for several windows, then step 5. Logs go to `logs/`. `run_all_sessions.sbatch` submits it as a Rockfish batch job. |
 
 ## What the simulation gives (as a check that the pipeline works)
 
@@ -78,24 +80,31 @@ python step3_shared_axes.py
 python step4_predict_behaviour.py
 ```
 
-Real data (on Rockfish), one session:
+Real data (on Rockfish), all sessions and windows as a batch job:
 ```
-python step0_load_session.py "/home/cfetsch1/vast-cfetsch1/data/hanzo_neuro_binary/hanzo_2021-09-14_13-27-18"
-python step2_decode_likelihoods.py data/hanzo_2021-09-14_13-27-18.npz
-python step3_shared_axes.py        data/hanzo_2021-09-14_13-27-18.npz
-python step4_predict_behaviour.py  data/hanzo_2021-09-14_13-27-18.npz
+sbatch run_all_sessions.sbatch        # then: tail -f logs/run_all.txt
 ```
-Figures go to `figures/<session>_stepN.png`, intermediate arrays to `data/`.
+One session and window by hand:
+```
+python step0_load_session.py "/home/cfetsch1/vast-cfetsch1/data/hanzo_neuro_binary/hanzo_2021-09-14_13-27-18" --align offset --start -0.30
+python step2_decode_likelihoods.py "data/hanzo_2021-09-14_13-27-18__offset-300_250ms.npz"
+python step3_shared_axes.py        "data/hanzo_2021-09-14_13-27-18__offset-300_250ms.npz"
+python step4_predict_behaviour.py  "data/hanzo_2021-09-14_13-27-18__offset-300_250ms.npz"
+python step5_pool_sessions.py offset-300_250ms
+```
+Figures go to `figures/`, intermediate arrays to `data/`, logs to `logs/`.
 
 ## Before trusting real-data results
 
-- [ ] Check the conventions table printed by step 0 (choice coding, which
-      PDW value is the high bet, which Direction is rightward).
-- [ ] Choose the spike window (step 0 settings). MT responds ~50-80 ms
-      after motion onset; longer windows keep fewer short-RT trials.
-- [ ] Loop over sessions and pool the step 4 comparisons.
+- [x] Check the conventions table printed by step 0 (now also checked
+      automatically for every session).
+- [x] Spike windows: four fixed 250 ms windows, three aligned to motion
+      onset and one to motion offset (see `run_all_sessions.py`).
+- [x] Remove slow drift (step 0) and allow for it in behaviour (step 4).
+- [x] Loop over sessions and pool the comparisons (steps 5, run_all).
 - [ ] Check what axis 2 tracks (step 3 prints its correlation with RT and
-      trial number) before calling it uncertainty.
+      trial number, overall and within coherence) before calling it
+      uncertainty.
 - [ ] Compare with a decoder trained directly on the wager
       (Vivar-Lazo & Fetsch's approach).
 - [ ] Optional: Walker's nonlinear decoder; a sensory (MT-like) version of

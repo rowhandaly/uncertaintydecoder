@@ -17,10 +17,17 @@ and use it in a small decision model:
 Both models also get a separate intercept for every coherence. That is
 how we "condition on the stimulus": anything the stimulus explains is
 absorbed by the intercepts, so the decoder can only help through
-trial-to-trial fluctuations at a fixed coherence.
+trial-to-trial fluctuations at a fixed coherence. They also get a smooth
+function of trial order, so a slow drift over the session (in the
+neurons AND in how often the monkey bets high) can't masquerade as a
+trial-by-trial link.
+
+The flexible decoder is always rank 2 - the hypothesis - rather than
+whichever rank happened to decode best, so every session tests the same
+thing and the sessions can be pooled (step 5).
 
 Comparisons (all on held-out trials):
-  fixed width vs best low-rank decoder
+  fixed width vs rank 2
       the fixed-width likelihood only moves, it never gets narrower or
       wider, so it carries a point estimate but no extra uncertainty
       (the full decoder is shown too, for reference)
@@ -56,11 +63,8 @@ names = list(decoded["names"])
 coherence_values = decoded["coherence_values"]
 log_likelihoods = dict(zip(names, decoded["log_likelihoods"]))
 
-# The best low-rank decoder from step 2.
-mean_scores = decoded["scores"].mean(axis=1)
-best_name = max([n for n in names if n.startswith("rank")],
-                key=lambda n: mean_scores[names.index(n)])
-print(f"comparing 'fixed width' with '{best_name}'\n")
+flexible_name = "rank 2"
+print(f"comparing 'fixed width' with '{flexible_name}'\n")
 
 
 def normalise(log_likelihood):
@@ -87,7 +91,7 @@ def log_odds_right(log_likelihood):
 # ---------------------------------------------------------------------------
 # Extra shape = what the flexible decoder adds on top of the fixed-width one.
 fixed = log_likelihoods["fixed width"]
-extra_shape = log_likelihoods[best_name] - fixed
+extra_shape = log_likelihoods[flexible_name] - fixed
 
 shuffled_extra_shape = np.zeros_like(extra_shape)
 for c in coherence_values:
@@ -102,17 +106,24 @@ log_likelihoods["shuffled"] = normalise(fixed + shuffled_extra_shape)
 # One column per coherence, 1 if that coherence was shown: the intercepts.
 coherence_columns = (coherence[:, None] == coherence_values).astype(float)
 
+# Slow drift: trial order scaled to -1..1, and its square and cube, so
+# the model can follow a smooth trend over the session.
+trial_order = data["trial_number"] if "trial_number" in data.files else np.arange(len(coherence))
+position = np.interp(trial_order, (trial_order.min(), trial_order.max()), (-1, 1))
+drift_columns = np.column_stack([position, position ** 2, position ** 3])
+baseline_columns = np.column_stack([coherence_columns, drift_columns])
+
 
 def held_out_log_likelihood(neural_feature, behaviour):
     """Log probability of the behaviour on each trial, from a model that
     never saw that trial. Higher = better prediction.
 
-    neural_feature=None fits the coherence intercepts alone: the baseline
-    that knows the stimulus but nothing about the neurons."""
+    neural_feature=None fits the baseline alone (coherence intercepts and
+    slow drift): it knows the stimulus but nothing about the neurons."""
     if neural_feature is None:
-        features = coherence_columns
+        features = baseline_columns
     else:
-        features = np.column_stack([coherence_columns, neural_feature])
+        features = np.column_stack([baseline_columns, neural_feature])
     model = LogisticRegression(C=100, max_iter=1000)
     p = cross_val_predict(model, features, behaviour, cv=10,
                           method="predict_proba")
@@ -121,10 +132,9 @@ def held_out_log_likelihood(neural_feature, behaviour):
                     np.searchsorted(classes, behaviour)])
 
 
-models = ["fixed width", "rank 1", best_name, "full", "shuffled"]
-models = list(dict.fromkeys(models))       # drop "rank 1" if it is the best
-choice_scores = {"coherence only": held_out_log_likelihood(None, choice)}
-wager_scores = {"coherence only": held_out_log_likelihood(None, wager)}
+models = ["fixed width", "rank 1", flexible_name, "rank 3", "full", "shuffled"]
+choice_scores = {"baseline": held_out_log_likelihood(None, choice)}
+wager_scores = {"baseline": held_out_log_likelihood(None, wager)}
 for name in models:
     odds = log_odds_right(log_likelihoods[name])
     choice_scores[name] = held_out_log_likelihood(odds, choice)
@@ -134,16 +144,17 @@ for name in models:
 # 3. Report the comparisons that matter, in order.
 # ---------------------------------------------------------------------------
 # Each line: model A minus model B, held-out log-likelihood per trial.
-#   1. Do the neurons add ANYTHING beyond the stimulus? If not, there is
+#   1. Do the neurons add ANYTHING beyond the baseline (stimulus + slow
+#      drift)? If not, there is
 #      nothing for the likelihood's shape to explain, and 2-4 will be ~0.
 #   2. Walker's test: flexible likelihood vs fixed width.
 #   3. Stricter: best low-rank vs rank 1 (both decode well; only the
 #      extra axis differs).
 #   4. Shuffle control: should be <= 0 if 2 is real.
 comparisons = [
-    ("neurons add anything?", "fixed width", "coherence only"),
-    ("Walker's test", best_name, "fixed width"),
-    ("extra axis", best_name, "rank 1"),
+    ("neurons add anything?", "fixed width", "baseline"),
+    ("Walker's test", flexible_name, "fixed width"),
+    ("extra axis", flexible_name, "rank 1"),
     ("full vs fixed", "full", "fixed width"),
     ("shuffle control", "shuffled", "fixed width"),
 ]
@@ -170,7 +181,7 @@ difficulties = np.unique(np.abs(coherence))
 fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
 for ax, label, scores in [(axes[0], "choice", choice_scores),
                           (axes[1], "wager", wager_scores)]:
-    for name, style in [(best_name, "o-"), ("shuffled", "o--")]:
+    for name, style in [(flexible_name, "o-"), ("shuffled", "o--")]:
         difference = scores[name] - scores["fixed width"]
         means = [difference[np.abs(coherence) == d].mean()
                  for d in difficulties]
@@ -188,3 +199,14 @@ axes[1].legend()
 fig.tight_layout()
 fig.savefig(f"figures/{session_name}_step4.png", dpi=120)
 print(f"saved figures/{session_name}_step4.png")
+
+# ---------------------------------------------------------------------------
+# 5. Save every trial's scores, so step 5 can pool sessions.
+# ---------------------------------------------------------------------------
+behaviour_file = Path("data") / f"{session_name}_behaviour.npz"
+np.savez(behaviour_file,
+         names=list(choice_scores),
+         choice_scores=np.array(list(choice_scores.values())),
+         wager_scores=np.array(list(wager_scores.values())),
+         coherence=coherence)
+print(f"saved {behaviour_file}")

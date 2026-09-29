@@ -3,3 +3,5 @@ data/*.npz
 figures/*.png
 !data/.gitkeep
 !figures/.gitkeep
+logs/*
+!logs/.gitkeep
