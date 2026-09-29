@@ -75,9 +75,13 @@ HIGH_BET = 1                 # PDW message value for a high bet
 MOTION_TTL_CHANNEL = 4       # TTL channel that is on while the dots are shown
 
 
-def window_tag(align, start, length):
-    """Short name for a window, used in file names: e.g. onset+80_250ms."""
-    return f"{align}{round(start * 1000):+d}_{round(length * 1000)}ms"
+def window_tag(align, start, length, rt_band=None):
+    """Short name for a window, used in file names: e.g. onset+80_250ms,
+    or offset-300_250ms_rt500-800 when only RTs of 0.5-0.8 s are kept."""
+    tag = f"{align}{round(start * 1000):+d}_{round(length * 1000)}ms"
+    if rt_band is not None:
+        tag += f"_rt{round(rt_band[0] * 1000)}-{round(rt_band[1] * 1000)}"
+    return tag
 
 
 def one_match(folder, pattern):
@@ -218,10 +222,18 @@ if __name__ == "__main__":
                         help="window start (s) relative to the alignment event")
     parser.add_argument("--length", type=float, default=0.25,
                         help="window length (s)")
+    # Optional: keep only trials with RT in a band, e.g. --rt-band 0.5 0.8.
+    # With a window aligned to motion offset, this keeps the window at
+    # nearly the same time after motion onset on every trial. (Without it,
+    # RT differs with coherence, so an offset-aligned window sits later
+    # after onset at low coherence - and MT's firing changes over time
+    # since onset, e.g. adaptation, which could mimic a difficulty signal.)
+    parser.add_argument("--rt-band", type=float, nargs=2, default=None,
+                        metavar=("MIN_RT", "MAX_RT"))
     args = parser.parse_args()
 
     session_name = args.session_folder.name
-    tag = window_tag(args.align, args.start, args.length)
+    tag = window_tag(args.align, args.start, args.length, args.rt_band)
     recording = one_match(args.session_folder,
                           "Record Node */experiment*/recording*")
     print(f"session: {session_name}   window: {tag}\n"
@@ -300,6 +312,8 @@ if __name__ == "__main__":
     window_ends = window_starts + round(args.length * SAMPLE_RATE)
     inside = ((window_starts >= task["motion_on"] + RESPONSE_LATENCY * SAMPLE_RATE)
               & (window_ends <= task["motion_off"])).to_numpy()
+    if args.rt_band is not None:
+        inside &= task["rt"].between(*args.rt_band).to_numpy()
     print(f"window {tag}: keeping {inside.sum()} of {len(task)} trials")
     print("trials kept per |coherence|:")
     print(task[inside].groupby(task["coherence"].abs()).size().to_string(), "\n")

@@ -23,12 +23,17 @@ import sys
 from pathlib import Path
 from step0_load_session import window_tag
 
-# Windows to run: (aligned to, start in s, length in s). All 250 ms long.
+# Windows to run: (aligned to, start in s, length in s, RT band or None).
+# All 250 ms long.
 WINDOWS = [
-    ("onset", 0.08, 0.25),     # early stimulus response (80-330 ms)
-    ("onset", 0.18, 0.25),     # 180-430 ms
-    ("onset", 0.28, 0.25),     # 280-530 ms
-    ("offset", -0.30, 0.25),   # last part of the stimulus, before the saccade
+    ("onset", 0.08, 0.25, None),        # early stimulus response (80-330 ms)
+    ("onset", 0.18, 0.25, None),        # 180-430 ms
+    ("onset", 0.28, 0.25, None),        # 280-530 ms
+    ("offset", -0.30, 0.25, None),      # last 250 ms before the saccade
+    # Same pre-saccade window, but only RTs of 0.5-0.8 s: the window then
+    # sits at nearly the same time after motion onset on every trial, so
+    # time-since-onset can't masquerade as a difficulty signal.
+    ("offset", -0.30, 0.25, (0.5, 0.8)),
 ]
 
 data_root = Path(sys.argv[1])
@@ -48,14 +53,16 @@ def run(command, log_file):
 
 problems = []
 for folder in session_folders:
-    for align, start, length in WINDOWS:
-        tag = window_tag(align, start, length)
+    for align, start, length, rt_band in WINDOWS:
+        tag = window_tag(align, start, length, rt_band)
         name = f"{folder.name}__{tag}"
         print(f"{name} ...", end=" ", flush=True)
 
-        ok = run(["step0_load_session.py", str(folder), "--align", align,
-                  "--start", str(start), "--length", str(length)],
-                 f"logs/{name}_step0.txt")
+        command = ["step0_load_session.py", str(folder), "--align", align,
+                   "--start", str(start), "--length", str(length)]
+        if rt_band is not None:
+            command += ["--rt-band", str(rt_band[0]), str(rt_band[1])]
+        ok = run(command, f"logs/{name}_step0.txt")
         if not ok:
             # The last line of the log says why (e.g. "SKIP: ...").
             reason = Path(f"logs/{name}_step0.txt").read_text().strip().splitlines()[-1]
@@ -74,8 +81,8 @@ for folder in session_folders:
             print("done")
 
 print()
-for align, start, length in WINDOWS:
-    tag = window_tag(align, start, length)
+for align, start, length, rt_band in WINDOWS:
+    tag = window_tag(align, start, length, rt_band)
     ok = run(["step5_pool_sessions.py", tag], f"logs/pooled__{tag}.txt")
     print(f"pooled {tag}: {'logs/pooled__' + tag + '.txt' if ok else 'FAILED'}")
 

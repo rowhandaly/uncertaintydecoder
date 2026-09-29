@@ -12,7 +12,19 @@ into the population's belief about direction:
 and use it in a small decision model:
 
     choice:  P(right choice) depends on log_odds_right
-    wager:   P(high bet)     depends on |log_odds_right|  (= confidence)
+    wager:   P(high bet)     depends on |log_odds_right|
+                             and on choice * log_odds_right
+
+The wager gets two features, because confidence can mean two things:
+  |log_odds_right|          how sure the population is about direction,
+                            whichever way it points
+  choice * log_odds_right   the population's evidence FOR THE DIRECTION THE
+                            MONKEY CHOSE (choice is +1 right, -1 left):
+                            positive when MT agrees with the choice,
+                            negative when it favours the other direction -
+                            "was my choice right?", like the posterior of the
+                            chosen option in Walker et al.'s decision model
+Every model gets both, so the comparisons stay like for like.
 
 Both models also get a separate intercept for every coherence. That is
 how we "condition on the stimulus": anything the stimulus explains is
@@ -138,7 +150,10 @@ wager_scores = {"baseline": held_out_log_likelihood(None, wager)}
 for name in models:
     odds = log_odds_right(log_likelihoods[name])
     choice_scores[name] = held_out_log_likelihood(odds, choice)
-    wager_scores[name] = held_out_log_likelihood(np.abs(odds), wager)
+    how_sure = np.abs(odds)
+    evidence_for_choice = choice * odds
+    wager_scores[name] = held_out_log_likelihood(
+        np.column_stack([how_sure, evidence_for_choice]), wager)
 
 # ---------------------------------------------------------------------------
 # 3. Report the comparisons that matter, in order.
