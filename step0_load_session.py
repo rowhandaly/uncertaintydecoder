@@ -32,6 +32,14 @@ likelihoods, and RT is related to confidence.) It is placed either:
   --align offset  relative to motion offset (the saccade), e.g.
                   --start -0.30 = starting 300 ms before the dots went off
 Trials whose window would fall outside the motion period are left out.
+With --allow-early the window may start before MT's response latency, or
+even before the dots appear (e.g. --start -0.25 = the 250 ms before motion
+onset): what the neurons were doing before any evidence arrived.
+
+Trial history is saved too, from the previous completed wagering trial
+(whatever window is used): its choice, wager, whether it was correct, and
+whether it was a high bet that lost (a timeout). The monkey's wager may
+depend on these, and so may the neurons, so step 6 can control for them.
 
 Usage (on Rockfish):
     python step0_load_session.py "/path/to/hanzo_2021-09-14_13-27-18"
@@ -246,6 +254,9 @@ if __name__ == "__main__":
     # 0.128. Tests whether the shared axes are needed across the difficult
     # coherences too, or only to tell the strongest motion apart.
     parser.add_argument("--max-coherence", type=float, default=None)
+    # Allow windows that start before MT's response latency - including
+    # before motion onset (a negative --start with --align onset).
+    parser.add_argument("--allow-early", action="store_true")
     args = parser.parse_args()
 
     session_name = args.session_folder.name
@@ -302,6 +313,22 @@ if __name__ == "__main__":
     task["coherence"] = np.round(unsigned * sign, 4) + 0.0
     task["choice_lr"] = np.where(task["choice"].astype(int) == RIGHT_CHOICE, 1, -1)
     task["wager"] = (task["PDW"].astype(int) == HIGH_BET).astype(int)
+    # Correct = chose the direction of the motion; at 0% there is no right
+    # answer, so it counts as 0.5 (a coin flip).
+    motion_sign = np.sign(task["coherence"])
+    task["correct"] = np.where(motion_sign == 0, 0.5,
+                               (task["choice_lr"] == motion_sign).astype(float))
+
+    # Trial history: the previous completed wagering trial, taken from the
+    # whole session BEFORE any trials are left out for the window. The
+    # first trial has no previous one, so it gets the session average.
+    previous = task[["choice_lr", "wager", "correct"]].shift(1)
+    previous = previous.fillna(previous.mean())
+    task["prev_choice"] = previous["choice_lr"]
+    task["prev_wager"] = previous["wager"]
+    task["prev_correct"] = previous["correct"]
+    # A high bet that turned out wrong = a timeout (the costly outcome).
+    task["prev_timeout"] = previous["wager"] * (1 - previous["correct"])
 
     print("\nconventions: P(right choice) should rise from ~0 to ~1 across")
     print("signed coherence, and P(high bet) should rise with |coherence|.")
@@ -322,13 +349,15 @@ if __name__ == "__main__":
         raise SystemExit("SKIP: wager coding looks wrong (high bets are not "
                          "more common at high coherence)")
 
-    # 5. Place the window, and keep trials where it lies within the motion
-    #    period (and after MT's response latency).
+    # 5. Place the window, and keep trials where it ends before the dots go
+    #    off and (unless --allow-early) starts after MT's response latency.
     align_time = task["motion_on"] if args.align == "onset" else task["motion_off"]
     window_starts = (align_time + round(args.start * SAMPLE_RATE)).to_numpy()
     window_ends = window_starts + round(args.length * SAMPLE_RATE)
-    inside = ((window_starts >= task["motion_on"] + RESPONSE_LATENCY * SAMPLE_RATE)
-              & (window_ends <= task["motion_off"])).to_numpy()
+    inside = (window_ends <= task["motion_off"]).to_numpy()
+    if not args.allow_early:
+        earliest = task["motion_on"] + RESPONSE_LATENCY * SAMPLE_RATE
+        inside = inside & (window_starts >= earliest).to_numpy()
     if args.rt_band is not None:
         inside = inside & task["rt"].between(*args.rt_band).to_numpy()
     if args.max_coherence is not None:
@@ -363,6 +392,10 @@ if __name__ == "__main__":
              rt=task["rt"].to_numpy(dtype=float),
              coherence_values=np.sort(task["coherence"].unique()).astype(float),
              trial_number=task["trial_number"].to_numpy(dtype=int),
+             prev_choice=task["prev_choice"].to_numpy(dtype=float),
+             prev_wager=task["prev_wager"].to_numpy(dtype=float),
+             prev_correct=task["prev_correct"].to_numpy(dtype=float),
+             prev_timeout=task["prev_timeout"].to_numpy(dtype=float),
              unit_id=units["id"].to_numpy(dtype=int),
              unit_region=units["Region"].astype(str).to_numpy(dtype=str),
              unit_target=units["TargSelect"].astype(str).to_numpy(dtype=str),

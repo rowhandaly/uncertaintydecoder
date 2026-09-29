@@ -13,6 +13,10 @@ predicts the wager relates to the direction that encodes coherence.
      Cross-validated; the amount of regularisation is chosen
      automatically (inside each training set).
   2. The same for the choice, for comparison.
+     Both are repeated with TRIAL HISTORY added to the baseline (the
+     previous trial's choice, wager, correctness and whether it was a lost
+     high bet). If the neurons only predict the wager because both carry
+     over from the last trial, the "+history" decoder loses that benefit.
   3. Angles between population directions (0 = the same direction,
      90 = orthogonal):
         wager  vs coherence axis   (rank-1 axis of the likelihood decoder)
@@ -78,6 +82,12 @@ baseline_columns = np.column_stack([coherence_columns,
 # penalty negligible. (The neurons are z-scored, so they're unaffected.)
 UNPENALISED = 1000
 
+# Trial history (saved by step 0; the simulation has none).
+HISTORY = ["prev_choice", "prev_wager", "prev_correct", "prev_timeout"]
+has_history = all(name in data.files for name in HISTORY)
+if has_history:
+    history_columns = np.column_stack([data[name] for name in HISTORY])
+
 
 # ---------------------------------------------------------------------------
 # 1-2. Direct decoders: do the neurons predict wager / choice beyond the
@@ -99,17 +109,29 @@ def held_out_log_likelihood(features, behaviour, choose_regularisation):
     return np.log(p[np.arange(len(behaviour)), np.searchsorted(classes, behaviour)])
 
 
+def report(a, b):
+    difference = scores[a] - scores[b]
+    t, p = ttest_rel(scores[a], scores[b])
+    print(f"  {a:>21s} - {b:<23s} {difference.mean():+.4f} per trial "
+          f"(total {difference.sum():+.1f}, t = {t:.2f}, p = {p:.1g})")
+
+
+baselines = {"": baseline_columns}
+if has_history:
+    baselines["+history"] = np.column_stack([baseline_columns, history_columns])
 scores = {}
 for label, behaviour in [("wager", wager), ("choice", choice)]:
-    baseline = held_out_log_likelihood(baseline_columns, behaviour, False)
-    direct = held_out_log_likelihood(
-        np.column_stack([baseline_columns * UNPENALISED, z_scored]), behaviour, True)
-    scores[f"{label} baseline"] = baseline
-    scores[f"{label} direct"] = direct
-    difference = direct - baseline
-    t, p = ttest_rel(direct, baseline)
-    print(f"direct {label} decoder vs baseline: {difference.mean():+.4f} per trial "
-          f"(total {difference.sum():+.1f}, t = {t:.2f}, p = {p:.1g})")
+    print(f"predicting {label} (held-out log-likelihood per trial, A - B):")
+    for extra, columns in baselines.items():
+        scores[f"{label} baseline{extra}"] = held_out_log_likelihood(
+            columns, behaviour, False)
+        scores[f"{label} direct{extra}"] = held_out_log_likelihood(
+            np.column_stack([columns * UNPENALISED, z_scored]), behaviour, True)
+        report(f"{label} direct{extra}", f"{label} baseline{extra}")
+    if has_history:
+        # How much does history alone predict, beyond stimulus and drift?
+        report(f"{label} baseline+history", f"{label} baseline")
+print()
 
 # ---------------------------------------------------------------------------
 # 3. Population directions, fitted on all trials.

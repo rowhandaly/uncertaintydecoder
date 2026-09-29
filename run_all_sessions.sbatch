@@ -7,14 +7,16 @@
 #
 # "shared" is the partition for small jobs: 2 cores on a node shared with
 # other people's jobs, rather than a whole node. `sinfo -s` lists the
-# partitions. If sbatch asks for an account, add a line:
+# partitions. If the job runs out of time, just submit it again: finished
+# steps are skipped, so it carries on where it stopped.
+# If sbatch asks for an account, add a line:
 #     #SBATCH --account=<your allocation name>
 #SBATCH --job-name=uncertainty
 #SBATCH --partition=shared
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=logs/run_all.txt
 
 # The login shell loads Rockfish's default modules, including an older
