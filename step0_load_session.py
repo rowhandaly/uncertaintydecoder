@@ -313,7 +313,7 @@ if __name__ == "__main__":
     inside = ((window_starts >= task["motion_on"] + RESPONSE_LATENCY * SAMPLE_RATE)
               & (window_ends <= task["motion_off"])).to_numpy()
     if args.rt_band is not None:
-        inside &= task["rt"].between(*args.rt_band).to_numpy()
+        inside = inside & task["rt"].between(*args.rt_band).to_numpy()
     print(f"window {tag}: keeping {inside.sum()} of {len(task)} trials")
     print("trials kept per |coherence|:")
     print(task[inside].groupby(task["coherence"].abs()).size().to_string(), "\n")
