@@ -84,7 +84,7 @@ decoder_names = ["fixed width", "rank 1", "rank 2", "rank 3", "full"]
 strengths = None
 spread_per_session = {name: [] for name in decoder_names}
 direction_per_session = {name: [] for name in decoder_names}
-loadings_per_session = []
+loadings_per_session = {name: [] for name in decoder_names}
 for session in sessions:
     data = load(session, "")
     decoded = load(session, "_decoded")
@@ -96,8 +96,12 @@ for session in sessions:
         spread_per_session[name].append([spread[strength == value].mean() for value in strengths])
         direction_per_session[name].append([direction[strength == value].mean() for value in strengths])
 
-    loadings = load(session, "_axes")["loadings"]
-    loadings_per_session.append(loadings / np.abs(loadings).max(axis=0))
+    saved_axes = load(session, "_axes")
+    for name in decoder_names:
+        key = f"loadings_{name.replace(' ', '_')}"
+        if key in saved_axes.files:              # older axes files only have rank 2
+            loadings = saved_axes[key]
+            loadings_per_session[name].append(loadings / np.abs(loadings).max(axis=0))
 
 for measure, per_session in [("spread (entropy, bits)", spread_per_session),
                              ("P(other direction)", direction_per_session)]:
@@ -107,19 +111,10 @@ for measure, per_session in [("spread (entropy, bits)", spread_per_session),
         print(f"  {value * 100:5.1f}%  " + "".join(
             f"{np.mean(per_session[name], axis=0)[row]:13.3f}" for name in decoder_names))
 
-figure, (loadings_ax, spread_ax, direction_ax) = plt.subplots(1, 3, figsize=(15, 4))
+Path("figures").mkdir(exist_ok=True)
 coherence_values = load(sessions[0], "")["coherence_values"]
-mean_loadings = np.mean(loadings_per_session, axis=0)
-spread_loadings = np.std(loadings_per_session, axis=0) / np.sqrt(len(sessions))
-for axis in range(mean_loadings.shape[1]):
-    loadings_ax.errorbar(coherence_values * 100, mean_loadings[:, axis], yerr=spread_loadings[:, axis],
-                         fmt="o-", label=f"axis {axis + 1}")
-loadings_ax.axhline(0, color="gray", lw=0.5)
-loadings_ax.set_xlabel("coherence (%)")
-loadings_ax.set_ylabel("loading (scaled to max 1 per session)")
-loadings_ax.set_title("rank-2 shared axes, average over sessions")
-loadings_ax.legend()
 
+figure, (spread_ax, direction_ax) = plt.subplots(1, 2, figsize=(10, 4))
 for ax, per_session, label in [(spread_ax, spread_per_session, "spread of the likelihood\n(entropy, bits)"),
                                (direction_ax, direction_per_session, "P(other direction)")]:
     for name in decoder_names:
@@ -128,9 +123,25 @@ for ax, per_session, label in [(spread_ax, spread_per_session, "spread of the li
     ax.set_ylabel(label)
     ax.set_title("decoded uncertainty vs difficulty")
 spread_ax.legend()
-
 figure.suptitle(f"{analysis}: {len(sessions)} sessions")
 figure.tight_layout()
-Path("figures").mkdir(exist_ok=True)
-figure.savefig(f"figures/pooled__{analysis}.png", dpi=120)
-print(f"\nsaved figures/pooled__{analysis}.png")
+figure.savefig(f"figures/pooled__{analysis}_uncertainty.png", dpi=120)
+
+figure, panels = plt.subplots(1, len(decoder_names), figsize=(4 * len(decoder_names), 3.5), sharey=True)
+for panel, name in zip(panels, decoder_names):
+    if not loadings_per_session[name]:
+        continue
+    mean_loadings = np.mean(loadings_per_session[name], axis=0)
+    standard_error = np.std(loadings_per_session[name], axis=0) / np.sqrt(len(loadings_per_session[name]))
+    for axis in range(mean_loadings.shape[1]):
+        panel.errorbar(coherence_values * 100, mean_loadings[:, axis], yerr=standard_error[:, axis],
+                       fmt="o-", label=f"axis {axis + 1}")
+    panel.axhline(0, color="gray", lw=0.5)
+    panel.set_title(f"{name} ({len(loadings_per_session[name])} sessions)")
+    panel.set_xlabel("coherence (%)")
+    panel.legend(fontsize=8)
+panels[0].set_ylabel("loading (scaled to max 1 per session)")
+figure.suptitle(f"{analysis}: shared axes of each decoder, average over sessions")
+figure.tight_layout()
+figure.savefig(f"figures/pooled__{analysis}_axes.png", dpi=120)
+print(f"\nsaved figures/pooled__{analysis}_uncertainty.png and figures/pooled__{analysis}_axes.png")

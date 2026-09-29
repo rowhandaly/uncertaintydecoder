@@ -58,6 +58,14 @@ class FixedWidthDecoder(nn.Module):
         distance = self.coherence_values - centre
         return -0.5 * (distance / width) ** 2
 
+    def readout_weights(self):
+        """Expanding -(c - centre)^2 / 2 width^2, the only part that depends on
+        both the coherence c and the neurons is c * centre / width^2: one axis
+        (the centre's weights) with loadings proportional to c."""
+        centre_weights = self.neurons_to_centre.weight.detach().numpy()[0]
+        width = torch.exp(self.log_width).item()
+        return np.outer(self.coherence_values.numpy(), centre_weights) / width ** 2
+
 
 def train(decoder, spike_counts, coherence_index, n_steps=1000):
     """spike_counts: (trials, neurons) z-scored tensor.
