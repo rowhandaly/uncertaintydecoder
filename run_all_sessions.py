@@ -116,10 +116,10 @@ for folder in session_folders:
             step0 += ["--allow-early"]
 
         # Session files made before trial history was added: redo step 0
-        # (same counts, plus history) and step 6 (which now uses it).
+        # (same counts, plus history). Step 6's old results are kept, and
+        # only its "+history" decoders are added (step6h below).
         if Path(session_file).exists() and "prev_wager" not in np.load(session_file).files:
             Path(session_file).unlink()
-            Path(f"data/{name}_wager.npz").unlink(missing_ok=True)
 
         steps = [
             ("step0", step0, session_file),
@@ -129,10 +129,15 @@ for folder in session_folders:
             ("step6", ["step6_wager_decoder.py", session_file], f"data/{name}_wager.npz"),
         ]
         steps = [step for step in steps if step[0] in analysis["steps"]]
+        wager_file = Path(f"data/{name}_wager.npz")
+        if wager_file.exists() and "wager direct+history" not in np.load(wager_file)["names"]:
+            # Output None: always run (it is only listed when needed).
+            steps.append(("step6h", ["step6_wager_decoder.py", session_file,
+                                     "--history-only"], None))
 
         ran = []
         for label, command, output in steps:
-            if Path(output).exists():
+            if output is not None and Path(output).exists():
                 continue
             log = f"logs/{name}_{label}.txt"
             if not run(command, log):

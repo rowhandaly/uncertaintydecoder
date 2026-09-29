@@ -34,6 +34,9 @@ predicts the wager relates to the direction that encodes coherence.
      null is at least that close.
 
 Usage:  python step6_wager_decoder.py data/<session>__<window>.npz
+        python step6_wager_decoder.py data/<session>__<window>.npz --history-only
+The second form only adds the "+history" decoders to an existing result
+(for sessions analysed before trial history was saved).
 """
 
 import sys
@@ -54,6 +57,7 @@ N_SHUFFLES = 100
 rng = np.random.default_rng(seed=2)
 
 session_file = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/simulated_session.npz")
+history_only = "--history-only" in sys.argv
 session_name = session_file.stem
 data = np.load(session_file)
 spike_counts = data["counts"].astype(float)
@@ -82,6 +86,13 @@ baseline_columns = np.column_stack([coherence_columns,
 # penalty negligible. (The neurons are z-scored, so they're unaffected.)
 UNPENALISED = 1000
 
+# How the regularisation strength is chosen: this many strengths, each
+# scored by this many folds of cross-validation within the training data.
+# (A coarse search is enough - it only sets how much the neurons' weights
+# are shrunk - and it is the slowest part of this step.)
+N_STRENGTHS = 5
+INNER_FOLDS = 3
+
 # Trial history (saved by step 0; the simulation has none).
 HISTORY = ["prev_choice", "prev_wager", "prev_correct", "prev_timeout"]
 has_history = all(name in data.files for name in HISTORY)
@@ -96,10 +107,11 @@ if has_history:
 def held_out_log_likelihood(features, behaviour, choose_regularisation):
     """Log probability of the actual behaviour on each held-out trial."""
     if choose_regularisation:
-        # Tries 10 strengths, picks the best by 5-fold CV inside each
-        # training set - so the held-out trials never influence the choice.
-        model = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000,
-                                     scoring="neg_log_loss")
+        # Tries N_STRENGTHS strengths, picks the best by cross-validation
+        # inside each training set - so the held-out trials never
+        # influence the choice.
+        model = LogisticRegressionCV(Cs=N_STRENGTHS, cv=INNER_FOLDS,
+                                     max_iter=2000, scoring="neg_log_loss")
     else:
         model = LogisticRegression(C=100, max_iter=2000)
     folds = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
@@ -117,9 +129,18 @@ def report(a, b):
 
 
 baselines = {"": baseline_columns}
+output = Path("data") / f"{session_name}_wager.npz"
+if history_only:
+    # Keep everything already saved; only the "+history" decoders are new.
+    if not has_history:
+        raise SystemExit(f"{session_file} has no trial history (rerun step 0)")
+    saved = dict(np.load(output))
+    scores = dict(zip(saved["names"], saved["scores"]))
+    baselines = {}
+else:
+    scores = {}
 if has_history:
     baselines["+history"] = np.column_stack([baseline_columns, history_columns])
-scores = {}
 for label, behaviour in [("wager", wager), ("choice", choice)]:
     print(f"predicting {label} (held-out log-likelihood per trial, A - B):")
     for extra, columns in baselines.items():
@@ -132,6 +153,12 @@ for label, behaviour in [("wager", wager), ("choice", choice)]:
         # How much does history alone predict, beyond stimulus and drift?
         report(f"{label} baseline+history", f"{label} baseline")
 print()
+
+if history_only:
+    saved["names"], saved["scores"] = list(scores), np.array(list(scores.values()))
+    np.savez(output, **saved)
+    print(f"added the +history decoders to {output}")
+    sys.exit()
 
 # ---------------------------------------------------------------------------
 # 3. Population directions, fitted on all trials.
@@ -153,9 +180,9 @@ def angle(a, b):
 
 # The regularisation for each decoder, chosen once on all trials.
 features = np.column_stack([baseline_columns * UNPENALISED, z_scored])
-C_wager = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000,
+C_wager = LogisticRegressionCV(Cs=N_STRENGTHS, cv=INNER_FOLDS, max_iter=2000,
                                scoring="neg_log_loss").fit(features, wager).C_[0]
-C_choice = LogisticRegressionCV(Cs=10, cv=5, max_iter=2000,
+C_choice = LogisticRegressionCV(Cs=N_STRENGTHS, cv=INNER_FOLDS, max_iter=2000,
                                 scoring="neg_log_loss").fit(features, choice).C_[0]
 wager_direction = neural_direction(wager, C_wager)
 choice_direction = neural_direction(choice, C_choice)
@@ -202,7 +229,6 @@ for name, value in observed.items():
     else:
         print(f"  {name:26s} {value:5.1f} deg")
 
-output = Path("data") / f"{session_name}_wager.npz"
 np.savez(output,
          names=list(scores), scores=np.array(list(scores.values())),
          angle_names=list(observed), angles=np.array(list(observed.values())),
