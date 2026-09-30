@@ -19,9 +19,9 @@ Two questions:
 | `load_session.py` | Reads one session (Open Ephys + Kilosort + task messages). Counts spikes of MT/MST units 80–330 ms after motion onset, removes slow drift, and saves `data/<session>__<analysis>.npz`. |
 | `decoders.py` | Fixed-width, low-rank and full decoders; training; held-out decoding. |
 | `decode.py` | Decodes coherence on held-out trials with fixed width, rank 1–3 and full, and compares them. |
-| `axes.py` | Splits the rank-2 readout into two population axes and each coherence's loadings on them. Checks them against the full decoder's readouts with a split-half ceiling. |
+| `axes.py` | Splits each decoder's readout into population axes and each coherence's loadings on them (fixed width: 1 axis, loadings a straight line; ranks 1–3; full: top 3). Checks the rank-2 readouts against the full decoder's with a split-half ceiling. |
 | `behaviour.py` | Predicts choice and wager beyond the stimulus from each likelihood (Walker's test), with a shuffle control and a direct decoder. |
-| `pool.py` | Pools sessions for one analysis: all comparisons, plus a figure of the rank-2 loadings and decoded uncertainty vs \|coherence\| for each decoder. |
+| `pool.py` | Pools sessions for one analysis: all comparisons, plus two figures: each decoder's axes averaged over sessions, and decoded uncertainty (likelihood entropy; probability of the other direction) vs \|coherence\| for each decoder. |
 | `run_all.py`, `run_all.sbatch` | Runs everything for every session. |
 | `firing_over_time.py` | Firing over time for each coherence; shows why the window is aligned to motion onset. |
 | `simulate.py` | A fake session with a real trial-to-trial uncertainty signal, to check the pipeline finds it. |
