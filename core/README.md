@@ -43,23 +43,36 @@ python axes.py data/simulated__onset+80_250ms.npz
 python behaviour.py data/simulated__onset+80_250ms.npz
 ```
 
-## Results so far (12 sessions, 80–330 ms after onset)
+## Results (12 sessions, 80–330 ms after onset)
 
-| | per trial | sessions |
+Decoding coherence, held-out log-likelihood per trial:
+
+| | all coherences | only \|coh\| ≤ 12.8% |
 |---|---|---|
-| rank 2 − rank 1 | +0.025 | 10/12 |
-| rank 3 − rank 2 | −0.016 | 0/12 |
-| rank 2 − full | +0.047 | 12/12 |
-| rank 2 − rank 1, only \|coh\| ≤ 12.8% | −0.009 | 1/12 |
-| Walker's test, wager | +0.0006 | 8/12, n.s. |
-| Walker's test, choice | +0.0005 | 9/12, p = 0.03 |
+| rank 2 − rank 1 | +0.025 (10/12 sessions) | −0.009 (1/12) |
+| rank 3 − rank 2 | −0.016 (0/12) | −0.012 (2/12) |
+| rank 2 − full | +0.047 (12/12) | +0.030 (10/12) |
+| rank 2 − fixed width | +0.038 (10/12) | −0.011 (2/12) |
 
-- Two shared axes decode coherence best. Axis 1 is signed coherence; axis 2
-  separates the strongest motion. Across the difficult range one axis is enough.
-- With the readout that low-dimensional, the likelihood's shape follows its
-  position, so there is no room for a separate uncertainty signal: the
-  flexible likelihood does not predict the wager beyond a fixed-width one.
-- Power is limited (5–26 units per session): MT does not predict the choice
-  beyond the stimulus either.
+Predicting behaviour beyond the stimulus:
+
+| | choice | wager |
+|---|---|---|
+| rank 2 − baseline | +0.0017 (8/12, p = 0.2) | −0.0006 (4/12, p = 0.2) |
+| Walker's test (rank 2 − fixed width) | +0.0001 (6/12, p = 0.6) | +0.0004 (8/12, p = 0.2) |
+| spike counts directly − baseline | −0.0010 (6/12, p = 0.4) | +0.0014 (9/12, p = 0.3) |
+
+- Across all coherences, two shared axes decode best. Averaged over sessions,
+  axis 1 is a straight line in signed coherence and axis 2 is U-shaped (it
+  separates the strongest motion). The full decoder's top two axes are the
+  same line and U; a third axis is noise.
+- Across the difficult range, the best decoder is a single axis whose
+  loadings are a straight line: the fixed-width decoder does as well as or
+  better than every flexible one.
+- Decoded uncertainty (likelihood entropy, or the probability of the other
+  direction) falls with |coherence| in the same way for every decoder.
+- No decoder predicts the choice or the wager beyond the stimulus, including
+  a direct decoder on the spike counts. With 5–26 units per session that
+  is limited power, not proof of absence.
 - Windows aligned to the saccade confound coherence with time since onset
   (fast trials sample the onset response). `firing_over_time.py` shows this.
