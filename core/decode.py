@@ -33,11 +33,11 @@ for name, make_decoder in decoders.items():
     log_likelihoods[name], scores[name] = decode_held_out(make_decoder, spike_counts, coherence_index)
 
 print("held-out log-likelihood of the true coherence, per trial (A - B), with 95% CI:")
-for better, worse in [("rank 2", "rank 1"), ("rank 3", "rank 2"),
+for first, second in [("rank 2", "rank 1"), ("rank 3", "rank 2"),
                       ("rank 2", "full"), ("rank 2", "fixed width")]:
-    difference = scores[better] - scores[worse]
+    difference = scores[first] - scores[second]
     margin = 1.96 * difference.std() / np.sqrt(len(difference))
-    print(f"  {better} - {worse:12s} {difference.mean():+.4f}  "
+    print(f"  {first} - {second:12s} {difference.mean():+.4f}  "
           f"[{difference.mean() - margin:+.4f}, {difference.mean() + margin:+.4f}]")
 
 output = Path("data") / f"{session_file.stem}_decoded.npz"
