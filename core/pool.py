@@ -32,6 +32,10 @@ def report(label, differences_per_session):
     print(f"  {label:48s} {all_trials.mean():+.4f} ± {standard_error:.4f}   "
           f"sessions positive {np.sum(session_means > 0)}/{len(sessions)}, "
           f"p = {across_sessions.pvalue:.2g}")
+    return session_means
+
+
+session_means_by_comparison = {}
 
 
 print("decoding coherence (A - B, held-out log-likelihood per trial):")
@@ -42,7 +46,7 @@ for a, b in [("rank 2", "rank 1"), ("rank 3", "rank 2"), ("rank 2", "full"),
         saved = load(session, "_decoded")
         scores = dict(zip(saved["names"], saved["scores"]))
         differences.append(scores[a] - scores[b])
-    report(f"{a} - {b}", differences)
+    session_means_by_comparison[("decoding", f"{a} - {b}")] = report(f"{a} - {b}", differences)
 
 comparisons = [("likelihood beyond stimulus", "fixed width", "baseline"),
                ("rank 2 beyond stimulus", "rank 2", "baseline"),
@@ -58,7 +62,7 @@ for behaviour in ["choice", "wager"]:
             saved = load(session, "_behaviour")
             scores = dict(zip(saved["names"], saved[f"{behaviour}_scores"]))
             differences.append(scores[a] - scores[b])
-        report(f"{question} ({a} - {b})", differences)
+        session_means_by_comparison[(behaviour, f"{a} - {b}")] = report(f"{question} ({a} - {b})", differences)
 
 print("\nsession                      trials  units")
 for session in sessions:
@@ -144,4 +148,28 @@ panels[0].set_ylabel("loading (scaled to max 1 per session)")
 figure.suptitle(f"{analysis}: shared axes of each decoder, average over sessions")
 figure.tight_layout()
 figure.savefig(f"figures/pooled__{analysis}_axes.png", dpi=120)
-print(f"\nsaved figures/pooled__{analysis}_uncertainty.png and figures/pooled__{analysis}_axes.png")
+# One dot per session for the key comparisons (positive = the first decoder is better).
+panels_to_show = {
+    "decoding coherence": [("decoding", "rank 2 - rank 1"), ("decoding", "rank 3 - rank 2"),
+                           ("decoding", "rank 2 - full"), ("decoding", "rank 2 - fixed width")],
+    "predicting the choice\n(beyond the stimulus)": [("choice", "rank 2 - baseline"), ("choice", "rank 2 - fixed width"),
+                                                       ("choice", "direct - baseline")],
+    "predicting the wager\n(beyond the stimulus)": [("wager", "rank 2 - baseline"), ("wager", "rank 2 - fixed width"),
+                                                      ("wager", "direct - baseline")],
+}
+figure, panels = plt.subplots(1, 3, figsize=(13, 4), gridspec_kw={"width_ratios": [4, 3, 3]})
+panels[2].sharey(panels[1])          # choice and wager on the same scale; note it is much smaller than decoding
+for panel, (title, keys) in zip(panels, panels_to_show.items()):
+    for position, key in enumerate(keys):
+        values = session_means_by_comparison[key]
+        jitter = np.random.default_rng(position).uniform(-0.12, 0.12, len(values))
+        panel.plot(position + jitter, values, "o", color="gray", alpha=0.6)
+        panel.plot(position, values.mean(), "s", color="black", markersize=9)
+    panel.axhline(0, color="gray", lw=0.5)
+    panel.set_xticks(range(len(keys)), [label for _, label in keys], rotation=30, ha="right")
+    panel.set_title(title)
+panels[0].set_ylabel("held-out log-likelihood per trial (A - B)\none dot per session, square = mean")
+figure.suptitle(f"{analysis}: {len(sessions)} sessions")
+figure.tight_layout()
+figure.savefig(f"figures/pooled__{analysis}_comparisons.png", dpi=120)
+print(f"\nsaved figures/pooled__{analysis}_uncertainty.png, _axes.png and _comparisons.png")

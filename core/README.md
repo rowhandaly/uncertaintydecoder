@@ -21,7 +21,7 @@ Two questions:
 | `decode.py` | Decodes coherence on held-out trials with fixed width, rank 1–3 and full, and compares them. |
 | `axes.py` | Splits each decoder's readout into population axes and each coherence's loadings on them (fixed width: 1 axis, loadings a straight line; ranks 1–3; full: top 3). Checks the rank-2 readouts against the full decoder's with a split-half ceiling. |
 | `behaviour.py` | Predicts choice and wager beyond the stimulus from each likelihood (Walker's test), with a shuffle control and a direct decoder. |
-| `pool.py` | Pools sessions for one analysis: all comparisons, plus two figures: each decoder's axes averaged over sessions, and decoded uncertainty (likelihood entropy; probability of the other direction) vs \|coherence\| for each decoder. |
+| `pool.py` | Pools sessions for one analysis: all comparisons, plus three figures: one dot per session for the key comparisons, each decoder's axes averaged over sessions, and decoded uncertainty (likelihood entropy; probability of the other direction) vs \|coherence\| for each decoder. |
 | `run_all.py`, `run_all.sbatch` | Runs everything for every session. |
 | `firing_over_time.py` | Firing over time for each coherence; shows why the window is aligned to motion onset. |
 | `simulate.py` | A fake session with a real trial-to-trial uncertainty signal, to check the pipeline finds it. |
