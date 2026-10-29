@@ -116,9 +116,8 @@ for ax, panel in zip(axes.flat, panels):
     ax.axhline(0, color="gray", lw=0.5)
     ax.set_xticks(range(len(DECODERS)), DECODERS)
     ax.set_title(titles[panel])
-    ax.set_ylabel(f"{ylabels[panel]}\n(held-out, per trial)")
-figure.suptitle(f"Predictive power of likelihood ({analysis})\n"
-                f"{len(sessions)} sessions, gray = one session, black = mean ± SEM")
+    ax.set_ylabel(ylabels[panel])
+figure.suptitle("Predictive power of likelihood")
 figure.tight_layout()
 output = f"figures/pooled__{analysis}_choice_wager.png"
 figure.savefig(output, dpi=120)
