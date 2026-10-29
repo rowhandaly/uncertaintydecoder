@@ -115,7 +115,7 @@ for ax, panel in zip(axes.flat, panels):
     ax.set_xticks(range(len(DECODERS)), DECODERS)
     ax.set_title(titles[panel])
     ax.set_ylabel("relative log likelihood\n(held-out, per trial)")
-figure.suptitle(f"{analysis}: predicting behaviour from each decoder's likelihood\n"
+figure.suptitle(f"Predictive power of likelihood ({analysis})\n"
                 f"{len(sessions)} sessions, gray = one session, black = mean ± SEM")
 figure.tight_layout()
 output = f"figures/pooled__{analysis}_choice_wager.png"
