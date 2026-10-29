@@ -100,13 +100,10 @@ for panel in panels:
 
 Path("figures").mkdir(exist_ok=True)
 figure, axes = plt.subplots(2, 2, figsize=(10, 8))
-titles = {"choice": "a) choice",
-          "wager": "b) wager",
-          "choice beyond stimulus": "c) choice, beyond the stimulus",
-          "wager beyond stimulus": "d) wager, beyond the stimulus"}
-references_text = {"choice": "vs drift only", "wager": "vs drift only",
-                   "choice beyond stimulus": "vs coherence + drift",
-                   "wager beyond stimulus": "vs coherence + drift"}
+titles = {"choice": "a) choice\nrelative to: slow drift only",
+          "wager": "b) wager\nrelative to: slow drift only",
+          "choice beyond stimulus": "c) choice, beyond the stimulus\nrelative to: coherence + slow drift",
+          "wager beyond stimulus": "d) wager, beyond the stimulus\nrelative to: coherence + slow drift"}
 for ax, panel in zip(axes.flat, panels):
     for position, name in enumerate(DECODERS):
         values = np.array(gains[panel][name])
@@ -117,7 +114,7 @@ for ax, panel in zip(axes.flat, panels):
     ax.axhline(0, color="gray", lw=0.5)
     ax.set_xticks(range(len(DECODERS)), DECODERS)
     ax.set_title(titles[panel])
-    ax.set_ylabel(f"held-out log-likelihood gain per trial\n({references_text[panel]})")
+    ax.set_ylabel("relative log likelihood\n(held-out, per trial)")
 figure.suptitle(f"{analysis}: predicting behaviour from each decoder's likelihood\n"
                 f"{len(sessions)} sessions, gray = one session, black = mean ± SEM")
 figure.tight_layout()
