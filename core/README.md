@@ -25,6 +25,7 @@ Two questions:
 | `run_all.py`, `run_all.sbatch` | Runs everything for every session. |
 | `firing_over_time.py` | Firing over time for each coherence; shows why the window is aligned to motion onset. |
 | `simulate.py` | A fake session with a real trial-to-trial uncertainty signal, to check the pipeline finds it. |
+| `choice_wager_figure.py` | Four panels: how well each decoder's likelihood (fixed width, rank 1, rank 2, full) predicts choice and wager, with and without the stimulus known. Reads saved results; run after the batch job. |
 
 ## Running
 
