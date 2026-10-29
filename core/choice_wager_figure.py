@@ -8,9 +8,10 @@ choice and wager, with and without the stimulus already known.
 Decoders: fixed width, rank 1, rank 2, full. Features are the same as in
 behaviour.py (choice: log odds of rightward motion; wager: |log odds| and
 choice * log odds). The score is the held-out log-likelihood of what the
-monkey did, per trial, minus that of a reference model:
-    a, b: slow drift only (trial position, squared, cubed), no stimulus
-    c, d: drift plus one intercept per coherence (behaviour.py's baseline)
+monkey did, per trial, minus that of a reference model. No drift terms:
+    a, b: chance, i.e. an intercept only (the overall rate of rightward
+          choices or high bets)
+    c, d: the stimulus alone, one intercept per coherence
 One dot per session, black = mean ± SEM over sessions.
 
 Reads the files decode.py already saved, so it runs in a minute or two.
@@ -70,11 +71,9 @@ for session in sessions:
     coherence, coherence_values = data["coherence"], data["coherence_values"]
     choice, wager = data["choice"], data["wager"]
 
-    trial_number = data["trial_number"]
-    position = np.interp(trial_number, (trial_number.min(), trial_number.max()), (-1, 1))
-    drift = np.column_stack([position, position ** 2, position ** 3])
+    chance = np.zeros((len(coherence), 1))          # intercept only
     coherence_columns = (coherence[:, None] == coherence_values).astype(float)
-    references = {"": drift, " beyond stimulus": np.column_stack([coherence_columns, drift])}
+    references = {"": chance, " beyond stimulus": coherence_columns}
 
     for suffix, reference in references.items():
         reference_choice = held_out_log_likelihood(reference, choice)
@@ -100,10 +99,13 @@ for panel in panels:
 
 Path("figures").mkdir(exist_ok=True)
 figure, axes = plt.subplots(2, 2, figsize=(10, 8))
-titles = {"choice": "a) choice\nrelative to: slow drift only",
-          "wager": "b) wager\nrelative to: slow drift only",
-          "choice beyond stimulus": "c) choice, beyond the stimulus\nrelative to: coherence + slow drift",
-          "wager beyond stimulus": "d) wager, beyond the stimulus\nrelative to: coherence + slow drift"}
+titles = {"choice": "a) choice",
+          "wager": "b) wager",
+          "choice beyond stimulus": "c) choice, beyond the stimulus",
+          "wager beyond stimulus": "d) wager, beyond the stimulus"}
+ylabels = {"choice": "log likelihood over chance", "wager": "log likelihood over chance",
+           "choice beyond stimulus": "log likelihood over stimulus alone",
+           "wager beyond stimulus": "log likelihood over stimulus alone"}
 for ax, panel in zip(axes.flat, panels):
     for position, name in enumerate(DECODERS):
         values = np.array(gains[panel][name])
@@ -114,7 +116,7 @@ for ax, panel in zip(axes.flat, panels):
     ax.axhline(0, color="gray", lw=0.5)
     ax.set_xticks(range(len(DECODERS)), DECODERS)
     ax.set_title(titles[panel])
-    ax.set_ylabel("relative log likelihood\n(held-out, per trial)")
+    ax.set_ylabel(f"{ylabels[panel]}\n(held-out, per trial)")
 figure.suptitle(f"Predictive power of likelihood ({analysis})\n"
                 f"{len(sessions)} sessions, gray = one session, black = mean ± SEM")
 figure.tight_layout()
