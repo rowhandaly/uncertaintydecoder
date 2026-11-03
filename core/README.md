@@ -27,6 +27,7 @@ Two questions:
 | `simulate.py` | A fake session with a real trial-to-trial uncertainty signal, to check the pipeline finds it. |
 | `choice_wager_figure.py` | Four panels: how well each decoder's likelihood (fixed width, rank 1, rank 2, full) predicts choice and wager, with and without the stimulus known. Reads saved results; run after the batch job. |
 | `decoding_figure.py` | Companion figure: how well each decoder (fixed width, rank 1, rank 2, full) decodes coherence, over chance, for all coherences and for \|coh\| ≤ 12.8%. Reads saved results. |
+| `analysis.py` | **Everything above in one script**: loads each session, decodes (fixed width, rank 1, rank 2, full), finds the axes, predicts choice and wager, and makes the five main figures. `python analysis.py <data folder>` |
 
 ## Running
 
